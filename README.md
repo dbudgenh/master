@@ -30,3 +30,4 @@ All documents and code used for the master thesis are stored here.
 - [ ] Try Triplet-network
 - [ ] Try Siamese-network
 - [ ] Try State-of-the-art network
+- [ ] KD Review and implementation
