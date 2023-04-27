@@ -8,13 +8,6 @@ class BirdDataset(Dataset):
     """
 
     def __init__(self,root_dir,csv_file,transform=None) -> None:
-        """_summary_
-
-        Args:
-            self (_type_): _description_
-            csv_file (_type_): _description_
-            transform (_type_, optional): _description_. Defaults to None.
-        """
         self.bird_frame = pd.read_csv(csv_file,delimiter=',')
         self.root_dir = root_dir
         self.transform = transform
@@ -24,6 +17,8 @@ class BirdDataset(Dataset):
 
     
     def __getitem__(self, idx):
+        if idx % 5000 == 0:
+            print(f'Loading {idx}-th example')
         class_id =  self.bird_frame.iloc[idx,0]
         img_path = os.path.join(self.root_dir,
                                 self.bird_frame.iloc[idx,1])
@@ -35,6 +30,6 @@ class BirdDataset(Dataset):
         sample = {'image': image, 'class_id': class_id, 'label': label,
                   'dataset': dataset, 'scientific_name': scientific_name}
         if self.transform:
-            sample = self.transform(sample)
+            sample['image'] = self.transform(image)
         return sample
 

@@ -16,18 +16,26 @@ All documents and code used for the master thesis are stored here.
     - XAI and Classificaiton.pdf
     - KD for Bird Classification.pdf
     - KD Review.pdf
+1.  **Bird Dataset**
+
+    This dataset consists of 525 bird species. 84635 training images, 2625 test images(5 images per species) and 2625 validation images(5 images per species). For further information, see [here](https://www.kaggle.com/datasets/gpiosenka/100-bird-species)
 
 ### Checklist
 
 - [x] Load bird data
 - [ ] Load snail data
 - [x] Show data
-- [ ] Load model
-- [ ] Data Augmentation
+- [x] Prepare data (transform,normalize)
+- [ ] Load model (naive/ResNet/state-of-the-art)
+- [x] Data Augmentation
 - [ ] Train model
 - [ ] Evaluate model
 - [ ] Grad-Cam
 - [ ] Try Triplet-network
 - [ ] Try Siamese-network
 - [ ] Try State-of-the-art network
-- [ ] KD Review and implementation
+- [ ] KD review
+- [ ] KD implementation
+- [ ] Compare transfer learning with model trainined from scratch
+- [ ] K-Fold (4,5) Cross-Validation
+- [ ] Fine-tuning model
