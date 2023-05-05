@@ -26,7 +26,7 @@ All documents and code used for the master thesis are stored here.
 - [ ] Load snail data
 - [x] Show data
 - [x] Prepare data (transform,normalize)
-- [ ] Load model (naive/ResNet/state-of-the-art)
+- [x] Load model (naive/ResNet/state-of-the-art)
 - [x] Data Augmentation
 - [ ] Train model
 - [ ] Evaluate model
@@ -39,3 +39,5 @@ All documents and code used for the master thesis are stored here.
 - [ ] Compare transfer learning with model trainined from scratch
 - [ ] K-Fold (4,5) Cross-Validation
 - [ ] Fine-tuning model
+- [ ] Use metrics for unbalanced datasets (MCC matthew correlation coefficient)
+- [ ] Fewshot learning

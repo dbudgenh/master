@@ -37,5 +37,7 @@ def main():
     image_data_loader = DataLoader(dataset=bird_dataset, batch_size=16, shuffle=False, num_workers=0)
     print(batch_mean_std(image_data_loader)) #(tensor([0.4742, 0.4694, 0.3954]), tensor([0.2394, 0.2332, 0.2547]))
 
+    
+
 if __name__ == '__main__':
     main()
