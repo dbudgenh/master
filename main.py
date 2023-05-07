@@ -35,7 +35,6 @@ def main():
     train_dataset = BirdDataset(root_dir='data',csv_file='data/birds.csv',transform=None,split=Split.TRAIN)
     valid_datasetset = BirdDataset(root_dir='data',csv_file='data/birds.csv',transform=None,split=Split.VALID)
     test_dataset =  BirdDataset(root_dir='data',csv_file='data/birds.csv',transform=None,split=Split.TEST)
-    
 
     train_loader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
     valid_loader = DataLoader(dataset=valid_datasetset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
@@ -50,11 +49,8 @@ def main():
     #Load the preprocessing steps for IMAGENET1K_V1.
     preprocess = weights.transforms()
 
-
-
-    
     #Training loop
-    
+
     #train on training set
     #based on validation accuracy, change 
 
