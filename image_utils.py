@@ -16,3 +16,4 @@ def show_tensor_as_image(tensor,title) -> None:
     plt.title(title)
     io.imshow(np.array(tensor.permute(1,2,0)))
     plt.show()
+

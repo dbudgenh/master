@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 import torch
 import os
-from utils import show_tensor_image
+from image_utils import show_tensor_image
 
 def mean_std(data_loader):
   sample = next(iter(data_loader))
