@@ -28,16 +28,25 @@ All documents and code used for the master thesis are stored here.
 - [x] Prepare data (transform,normalize)
 - [x] Load model (naive/ResNet/state-of-the-art)
 - [x] Data Augmentation
-- [ ] Train model
-- [ ] Evaluate model
+- [x] Train model
+- [x] Evaluate model
+- [x] Use metrics for unbalanced datasets (MCC matthew correlation coefficient)
 - [ ] Grad-Cam
-- [ ] Try Triplet-network
-- [ ] Try Siamese-network
-- [ ] Try State-of-the-art network
-- [ ] KD review
+- [x] KD review
 - [ ] KD implementation
 - [ ] Compare transfer learning with model trainined from scratch
 - [ ] K-Fold (4,5) Cross-Validation
+- [ ] Try Triplet-network
+- [ ] Try Siamese-network
+- [ ] Try State-of-the-art network
 - [ ] Fine-tuning model
-- [ ] Use metrics for unbalanced datasets (MCC matthew correlation coefficient)
+
 - [ ] Fewshot learning
+
+# Questions
+
+1. GPU Server? Log-in credentials?
+2. Google Colab? Do we get TPUs? Can it run for multiple days without interruption?
+3. Snail dataset? need it NOW.
+4. KD Implementations?
+5. GradCam Implementations?

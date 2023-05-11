@@ -3,7 +3,6 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 import torch
 import os
-from image_utils import show_tensor_image
 
 def mean_std(data_loader):
   sample = next(iter(data_loader))
@@ -35,7 +34,8 @@ def main():
     transform = transforms.Compose([transforms.ToPILImage(),transforms.Resize((224,224)),transforms.ToTensor()])
     bird_dataset = BirdDataset(root_dir='data',csv_file='data/birds.csv',transform=transform)
     image_data_loader = DataLoader(dataset=bird_dataset, batch_size=16, shuffle=False, num_workers=0)
-    print(batch_mean_std(image_data_loader)) #(tensor([0.4742, 0.4694, 0.3954]), tensor([0.2394, 0.2332, 0.2547]))
+    print(next(iter(image_data_loader)))
+    #print(batch_mean_std(image_data_loader)) #(tensor([0.4742, 0.4694, 0.3954]), tensor([0.2394, 0.2332, 0.2547]))
 
     
 
