@@ -19,7 +19,7 @@ class ImageClassifierBase(pl.LightningModule):
         self.weight_decay = weight_decay
         self.batch_size = batch_size
         self.accuracy = Accuracy(task="multiclass", num_classes=NUM_CLASSES)
-        self.f1 = F1Score(task="multiclass",num_classes=NUM_CLASSES)
+        #self.f1 = F1Score(task="multiclass",num_classes=NUM_CLASSES)
         self.mcc = MatthewsCorrCoef(task="multiclass",num_classes=NUM_CLASSES)
 
     def configure_optimizers(self) -> Any:
@@ -32,12 +32,12 @@ class ImageClassifierBase(pl.LightningModule):
         loss = F.cross_entropy(input=output,target
                                =labels)
         accuracy = self.accuracy(output,labels)
-        f1_score = self.f1(output,labels)
+        #f1_score = self.f1(output,labels)
         mcc = self.mcc(output,labels)
 
         self.log("train_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("train_loss",loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("train_f1_score",f1_score,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        #self.log("train_f1_score",f1_score,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("train_mcc",mcc,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         return loss
     
@@ -46,14 +46,32 @@ class ImageClassifierBase(pl.LightningModule):
         output = self(inputs)
         loss = F.cross_entropy(input=output,target=labels)
         accuracy = self.accuracy(output,labels)
-        f1_score = self.f1(output,labels)
+        #f1_score = self.f1(output,labels)
         mcc = self.mcc(output,labels)
 
         self.log("validation_accuracy",accuracy,prog_bar=True,logger=True,batch_size=self.batch_size),
         self.log("validation_loss",loss,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("validation_f1_score",f1_score,prog_bar=True,logger=True,batch_size=self.batch_size)
+        #self.log("validation_f1_score",f1_score,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("validation_mcc",mcc,prog_bar=True,logger=True,batch_size=self.batch_size)
         return loss
+    
+    def test_step(self,batch,batch_idx):
+        inputs, labels,paths = batch['image'], batch['class_id'], batch['path']
+        output = self(inputs)
+        loss = F.cross_entropy(input=output,target=labels)
+        accuracy = self.accuracy(output,labels)
+        #f1_score = self.f1(output,labels)
+        mcc = self.mcc(output,labels)
+
+        predictions = torch.argmax(output,dim=1)
+        idx_mask = ((predictions==labels) == False).nonzero().squeeze()
+        
+        #print(paths[idx_mask])
+        self.log("test_accuracy",accuracy,prog_bar=True,logger=True,batch_size=self.batch_size),
+        self.log("test_loss",loss,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("test_mcc",mcc,prog_bar=True,logger=True,batch_size=self.batch_size)
+        return loss
+
     
 class EfficientNet_B0(ImageClassifierBase):
     def __init__(self,lr,weight_decay,batch_size):
@@ -70,6 +88,15 @@ class EfficientNet_V2_M(ImageClassifierBase):
     def forward(self,x):
         out = self.efficient_net(x)
         return out
+    
+class EfficientNet_V2_L(ImageClassifierBase):
+    pass
+class VisionTransformer_B_16(ImageClassifierBase): 
+    pass
+class VisionTransformer_L_16(ImageClassifierBase): 
+    pass
+class VisionTransformer_H_14(ImageClassifierBase):
+    pass
 
 class NaiveClassifier(ImageClassifierBase):
     def __init__(self,lr,momentum,batch_size):

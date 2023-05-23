@@ -18,7 +18,7 @@ All documents and code used for the master thesis are stored here.
     - KD Review.pdf
 1.  **Bird Dataset**
 
-    This dataset consists of 525 bird species. 84635 training images, 2625 test images(5 images per species) and 2625 validation images(5 images per species). For further information, see [here](https://www.kaggle.com/datasets/gpiosenka/100-bird-species)
+    This dataset consists of 525 bird species. 84635 training images, 2625 test images(5 images per species) and 2625 validation images (5 images per species). For further information, see [here](https://www.kaggle.com/datasets/gpiosenka/100-bird-species)
 
 ### Checklist
 
@@ -31,22 +31,39 @@ All documents and code used for the master thesis are stored here.
 - [x] Train model
 - [x] Evaluate model
 - [x] Use metrics for unbalanced datasets (MCC matthew correlation coefficient)
-- [ ] Grad-Cam
+- [x] Grad-Cam
 - [x] KD review
-- [ ] KD implementation
+- [ ] KD implementation (try pre-trained student model and from scratch)
 - [ ] Compare transfer learning with model trainined from scratch
 - [ ] K-Fold (4,5) Cross-Validation
 - [ ] Try Triplet-network
 - [ ] Try Siamese-network
-- [ ] Try State-of-the-art network
+- [x] Try State-of-the-art network
 - [ ] Fine-tuning model
-
 - [ ] Fewshot learning
 
 # Questions
 
-1. GPU Server? Log-in credentials?
-2. Google Colab? Do we get TPUs? Can it run for multiple days without interruption?
-3. Snail dataset? need it NOW.
-4. KD Implementations?
-5. GradCam Implementations?
+1. GPU Server? Log-in credentials? -> Ask gemma
+2. Google Colab? Do we get TPUs? Can it run for multiple days without interruption? -> Check pro version for google colab
+3. Snail dataset? need it NOW. -> Ask gemma
+4. KD Implementations? https://josehoras.github.io/knowledge-distillation/
+5. GradCam Implementations? https://medium.com/@stepanulyanin/implementing-grad-cam-in-pytorch-ea0937c31e82 https://www.coursera.org/projects/deep-learning-with-pytorch-gradcam
+
+# Knowledge Distillation
+
+1. Response based KD
+2. Feature based KD
+3. Relational KD
+4. Attention KD
+5. Self distillation
+6. Offline distillation #David
+7. Online distillation #Train two models at once
+8. Collaborative distillation (Multiple teacher assistants) #Have an intermediate network teach the student
+
+# Next steps
+
+Prepare ppt distinction between my presentation and Leo
+
+- Which GradCam techniques am I using? Which are Leo?
+- Which KD techniques am I using? Which Leo?

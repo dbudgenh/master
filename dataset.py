@@ -5,6 +5,7 @@ from skimage import io
 from enum import Enum
 from PIL import Image
 from numpy import asarray
+from torchvision.io import read_image
 
 class Split(Enum):
     TRAIN=1
@@ -40,10 +41,11 @@ class BirdDataset(Dataset):
         label = self.bird_frame.iloc[idx,2]
         dataset = self.bird_frame.iloc[idx,3]
         scientific_name = self.bird_frame.iloc[idx,4]
-        image = io.imread(img_path)
+        #image = io.imread(img_path)
+        image = read_image(img_path)
 
         sample = {'image': image, 'class_id': int(class_id), 'label': label,
-                  'dataset': dataset, 'scientific_name': scientific_name}
+                  'dataset': dataset, 'scientific_name': scientific_name,'path':img_path}
         if self.transform:
             sample['image'] = self.transform(image)
         return sample

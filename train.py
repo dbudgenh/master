@@ -12,12 +12,11 @@ import torch.optim as optim
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-
 NUM_WORKERS = 8
 PRINT_EVERY = 1000
-
+CHECKPOINT_PATH = './statistics/epoch=119_validation_loss=0.2003_validation_accuracy=0.95_validation_mcc=0.93.ckpt'
 #Hyperparameters for training
-BATCH_SIZE = 32
+BATCH_SIZE = 8
 LEARNING_RATE = 1e-4
 WEIGHT_DECAY=1e-2
 EPOCHS = 200
@@ -25,20 +24,15 @@ MOMENUTUM = 0.9
 RESIZE_SIZE = (224,224)
 
 
-
-
-
 def main():
-    torchvision.disable_beta_transforms_warning()
     torch.set_float32_matmul_precision('medium')
     
-    #Prepare data and augment data
+    #Prepare data transformation pipeline
     transform_train = transforms.Compose([
         transforms.ToPILImage(),
         transforms.Resize(RESIZE_SIZE),
         AugMix(severity=4,mixture_width=4,alpha=0.65),
         transforms.CenterCrop(RESIZE_SIZE),
-        transforms.RandomCrop(size=(170,170)),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.RandomRotation(degrees=180),
@@ -65,15 +59,14 @@ def main():
 
     model_checkpoint = ModelCheckpoint(
                                        dirpath='statistics/',
-                                       filename="{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_f1_score:.2f}",
+                                       filename="{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}", 
                                        save_top_k=3,
                                        monitor="validation_loss",
                                        mode='min')
     
     model = EfficientNet_V2_M(lr=LEARNING_RATE,weight_decay=WEIGHT_DECAY,batch_size=BATCH_SIZE)
-
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint])
-    trainer.fit(model=model,train_dataloaders=train_loader,val_dataloaders=valid_loader)
+    trainer.fit(model=model,train_dataloaders=train_loader,val_dataloaders=valid_loader,ckpt_path=CHECKPOINT_PATH)
 
     
 if __name__ == '__main__':

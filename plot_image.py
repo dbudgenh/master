@@ -1,4 +1,4 @@
-from utils import show_tensor_as_image
+from image_utils import show_tensor_as_image
 from dataset import BirdDataset
 import torch
 from torchvision.transforms import transforms
