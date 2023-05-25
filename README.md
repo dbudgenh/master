@@ -80,3 +80,5 @@ Prepare ppt distinction between my presentation and Leo
   - David: More focus on GradCam techniques (ScoreCam/HiResCAM etc.), what are the differences, what works the best etc. Less focus on KD (maybe only offline-KD)
   - Leo: More focus on different KD-techniques (Response-based/Feature-based/Relation etc..)., what are the differences, what works the best etc. Less focus on GradCAM.
   - Other XAI techniques? https://openaccess.thecvf.com/content_cvpr_2018/papers/Li_Tell_Me_Where_CVPR_2018_paper.pdf
+
+lokal : 3.7it/s batch_size = 32 (total 2645it) -> Pro epoch 12minuten

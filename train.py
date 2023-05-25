@@ -1,4 +1,4 @@
-from models import EfficientNet_B0,NaiveClassifier,EfficientNet_V2_M
+from models import EfficientNet_B0,NaiveClassifier,EfficientNet_V2_S,EfficientNet_V2_M
 from dataset import BirdDataset,Split
 import torch
 import torchvision
@@ -11,21 +11,27 @@ import torch.optim as optim
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-NUM_WORKERS = 8
-PRINT_EVERY = 1000
-CHECKPOINT_PATH = './statistics/epoch=119_validation_loss=0.2003_validation_accuracy=0.95_validation_mcc=0.93.ckpt'
+NUM_WORKERS = 2
+PRINT_EVERY = 2000
+CHECKPOINT_PATH = './statistics/EfficientNet-V2_M_Lion_200Epochs/epoch=119_validation_loss=0.2003_validation_accuracy=0.95_validation_mcc=0.93.ckpt'
 #Hyperparameters for training
 BATCH_SIZE = 8
 LEARNING_RATE = 1e-4
 WEIGHT_DECAY=1e-2
-EPOCHS = 200
+EPOCHS = 300
 MOMENUTUM = 0.9
 RESIZE_SIZE = (224,224)
 
 
 def main():
     torch.set_float32_matmul_precision('medium')
-    
+    root_dir = '/content/data/'
+    csv_file = '/content/data/birds.csv'
+    print(f'Using {root_dir} as root directory and {csv_file} as dataframe')
+
+    #hdf5_file = getData(path_to_hdf5) #2GB groß
+
+
     #Prepare data transformation pipeline
     transform_train = transforms.Compose([
         transforms.ToPILImage(),
@@ -47,9 +53,9 @@ def main():
     ])
 
     #Load dataset
-    train_dataset = BirdDataset(root_dir='data',csv_file='data/birds.csv',transform=transform_train,split=Split.TRAIN)
-    valid_datasetset = BirdDataset(root_dir='data',csv_file='data/birds.csv',transform=transform_valid,split=Split.VALID)
-    test_dataset =  BirdDataset(root_dir='data',csv_file='data/birds.csv',transform=transform_valid,split=Split.TEST)
+    train_dataset = BirdDataset(root_dir=root_dir,csv_file=csv_file,transform=transform_train,split=Split.TRAIN)
+    valid_datasetset = BirdDataset(root_dir=root_dir,csv_file=csv_file,transform=transform_valid,split=Split.VALID)
+    test_dataset =  BirdDataset(root_dir=root_dir,csv_file=csv_file,transform=transform_valid,split=Split.TEST)
 
     train_loader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
     valid_loader = DataLoader(dataset=valid_datasetset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
@@ -63,9 +69,9 @@ def main():
                                        monitor="validation_loss",
                                        mode='min')
     
-    model = EfficientNet_V2_M(lr=LEARNING_RATE,weight_decay=WEIGHT_DECAY,batch_size=BATCH_SIZE)
+    model = EfficientNet_V2_S(lr=LEARNING_RATE,weight_decay=WEIGHT_DECAY,batch_size=BATCH_SIZE)
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint])
-    trainer.fit(model=model,train_dataloaders=train_loader,val_dataloaders=valid_loader,ckpt_path=CHECKPOINT_PATH)
+    trainer.fit(model=model,train_dataloaders=train_loader,val_dataloaders=valid_loader)
 
     
 if __name__ == '__main__':

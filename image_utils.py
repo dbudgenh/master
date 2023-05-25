@@ -13,14 +13,12 @@ def show_image_from_array(image_array,title) -> None:
     plt.show()
 
 def show_image_from_tensor(tensor,title) -> None:
-    print(tensor)
     plt.title(title)
     io.imshow(np.array(tensor.permute(1,2,0)))
     plt.show()
 
 def show_image_from_path(path,title) -> None:
     image_array = io.imread(path)
-    print(image_array)
     plt.title(title)
     io.imshow(image_array)
     plt.show()

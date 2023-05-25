@@ -3,7 +3,7 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch.nn as nn
 import torch 
 import torch.nn.functional as F
-from torchvision.models import efficientnet_b0,efficientnet_v2_m
+from torchvision.models import efficientnet_b0,efficientnet_v2_s,efficientnet_v2_m
 import pytorch_lightning as pl
 import torch.optim as optim
 from torchmetrics import Accuracy,F1Score,MatthewsCorrCoef
@@ -82,6 +82,14 @@ class EfficientNet_B0(ImageClassifierBase):
         out = self.efficient_net(x)
         return out
     
+class EfficientNet_V2_S(ImageClassifierBase):
+    def __init__(self,lr,weight_decay,batch_size):
+        super().__init__(lr,weight_decay,batch_size)
+        self.efficient_net = efficientnet_v2_s(weights=None, num_classes=NUM_CLASSES)
+    def forward(self,x):
+        out = self.efficient_net(x)
+        return out
+
 class EfficientNet_V2_M(ImageClassifierBase):
     def __init__(self,lr,weight_decay,batch_size):
         super().__init__(lr,weight_decay,batch_size)
