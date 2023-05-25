@@ -1,4 +1,4 @@
-from image_utils import show_tensor_as_image
+from image_utils import show_image_from_tensor
 from dataset import BirdDataset
 import torch
 from torchvision.transforms import transforms
@@ -20,7 +20,7 @@ def main():
         sample = bird_dataset[i]
         image,label,class_id = sample['image'],sample['label'],sample['class_id']
         print(image)
-        show_tensor_as_image(tensor=image,title=f'Label: {label} \n Class-id: {class_id}')
+        show_image_from_tensor(tensor=image,title=f'Label: {label} \n Class-id: {class_id}')
         break
     
 

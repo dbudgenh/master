@@ -64,9 +64,10 @@ class ImageClassifierBase(pl.LightningModule):
         mcc = self.mcc(output,labels)
 
         predictions = torch.argmax(output,dim=1)
-        idx_mask = ((predictions==labels) == False).nonzero().squeeze()
-        
-        #print(paths[idx_mask])
+        errors_idx = (predictions - labels != 0 )
+
+        print(errors_idx)
+
         self.log("test_accuracy",accuracy,prog_bar=True,logger=True,batch_size=self.batch_size),
         self.log("test_loss",loss,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("test_mcc",mcc,prog_bar=True,logger=True,batch_size=self.batch_size)
@@ -119,3 +120,6 @@ class NaiveClassifier(ImageClassifierBase):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
+    
+
+

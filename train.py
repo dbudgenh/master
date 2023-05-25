@@ -1,4 +1,3 @@
-from image_utils import show_image
 from models import EfficientNet_B0,NaiveClassifier,EfficientNet_V2_M
 from dataset import BirdDataset,Split
 import torch

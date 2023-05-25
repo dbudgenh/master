@@ -67,3 +67,16 @@ Prepare ppt distinction between my presentation and Leo
 
 - Which GradCam techniques am I using? Which are Leo?
 - Which KD techniques am I using? Which Leo?
+
+# Unterschiede
+
+- Models
+  - David: ResNet, EfficientNet, VisionTransformer
+  - Leo: ResNet, Siamese-network / Triplet-Network
+- Regularization
+  - David: Augmentation/Regularization techniques 1 (Random-Crop, Random erasing (from Paper), ...)
+  - Leo : Augmentation/Regularization techniques 2 (AugMix (from Paper), ....)
+- XAI
+  - David: More focus on GradCam techniques (ScoreCam/HiResCAM etc.), what are the differences, what works the best etc. Less focus on KD (maybe only offline-KD)
+  - Leo: More focus on different KD-techniques (Response-based/Feature-based/Relation etc..)., what are the differences, what works the best etc. Less focus on GradCAM.
+  - Other XAI techniques? https://openaccess.thecvf.com/content_cvpr_2018/papers/Li_Tell_Me_Where_CVPR_2018_paper.pdf

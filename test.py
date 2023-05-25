@@ -21,8 +21,6 @@ def main():
         transforms.Normalize(mean=(0.4742, 0.4694, 0.3954),std=(0.2394, 0.2332, 0.2547))
     ])
 
-    # transform_reverse = transforms.Compose([ transforms.Normalize(mean=[-0.4742/0.2394,-0.4694/0.2332,-0.3954/0.2547],std=[1/0.2394,1/0.2332,1/0.2547])
-    #                            ])
     test_dataset =  BirdDataset(root_dir='data',csv_file='data/birds.csv',transform=transform_valid,split=Split.TEST)
     test_loader = DataLoader(dataset=test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS) 
 
@@ -30,12 +28,6 @@ def main():
     input_tensor = sample['image']
     labels = sample['class_id']
     paths = sample['path']
-
-    # rgb_images = transform_reverse(input_tensor)
-    # show_tensor_as_image(transform_reverse(rgb_images[1])*255,"Test")
-
-    #show_image_from_path(paths[1],title="Original image")
-
 
     model = EfficientNet_V2_M.load_from_checkpoint(checkpoint_path=CHECKPOINT_PATH)
 

@@ -41,7 +41,6 @@ class BirdDataset(Dataset):
         label = self.bird_frame.iloc[idx,2]
         dataset = self.bird_frame.iloc[idx,3]
         scientific_name = self.bird_frame.iloc[idx,4]
-        #image = io.imread(img_path)
         image = read_image(img_path)
 
         sample = {'image': image, 'class_id': int(class_id), 'label': label,
