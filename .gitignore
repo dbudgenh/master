@@ -9,7 +9,7 @@ __pycache__/
 master/
 data/
 lightning_logs/
-statstics/
+statistics/
 
 # Distribution / packaging
 .Python
