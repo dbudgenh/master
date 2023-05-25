@@ -8,6 +8,8 @@ __pycache__/
 
 master/
 data/
+lightning_logs/
+statstics/
 
 # Distribution / packaging
 .Python
@@ -131,6 +133,4 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Pytorch-lightning
-.lightning_logs/
-.statstics/
+
