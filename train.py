@@ -1,5 +1,5 @@
 from models import EfficientNet_B0,NaiveClassifier,EfficientNet_V2_S,EfficientNet_V2_M
-from dataset import BirdDataset,Split
+from dataset import BirdDataset,Split,BirdDatasetNPZ
 import torch
 import torchvision
 torchvision.disable_beta_transforms_warning()
@@ -10,12 +10,12 @@ import torch.nn as nn
 import torch.optim as optim
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
+import numpy as np
 
-NUM_WORKERS = 2
+NUM_WORKERS=2
 PRINT_EVERY = 2000
 CHECKPOINT_PATH = './statistics/EfficientNet-V2_M_Lion_200Epochs/epoch=119_validation_loss=0.2003_validation_accuracy=0.95_validation_mcc=0.93.ckpt'
-#Hyperparameters for training
-BATCH_SIZE = 8
+BATCH_SIZE = 32 #128 is optimal for TPUs, use multiples of 64 that fits into memory
 LEARNING_RATE = 1e-4
 WEIGHT_DECAY=1e-2
 EPOCHS = 300
@@ -27,10 +27,8 @@ def main():
     torch.set_float32_matmul_precision('medium')
     root_dir = '/content/data/'
     csv_file = '/content/data/birds.csv'
-    print(f'Using {root_dir} as root directory and {csv_file} as dataframe')
-
-    #hdf5_file = getData(path_to_hdf5) #2GB groß
-
+    npz_file = 'data/dataset.npz' #C:/Users/david/Desktop/dataset.npz'
+    print(f'root_dir={root_dir}\tcsv_file={csv_file}\tnpz_file={npz_file}')
 
     #Prepare data transformation pipeline
     transform_train = transforms.Compose([
@@ -40,7 +38,7 @@ def main():
         transforms.CenterCrop(RESIZE_SIZE),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
-        transforms.RandomRotation(degrees=180),
+        transforms.RandomRotation(degrees=45),
         transforms.ToTensor(), #0-255 -> 0-1
         transforms.Normalize(mean=(0.4742, 0.4694, 0.3954),std=(0.2394, 0.2332, 0.2547))
     ])
@@ -53,9 +51,20 @@ def main():
     ])
 
     #Load dataset
-    train_dataset = BirdDataset(root_dir=root_dir,csv_file=csv_file,transform=transform_train,split=Split.TRAIN)
-    valid_datasetset = BirdDataset(root_dir=root_dir,csv_file=csv_file,transform=transform_valid,split=Split.VALID)
-    test_dataset =  BirdDataset(root_dir=root_dir,csv_file=csv_file,transform=transform_valid,split=Split.TEST)
+    #train_dataset = BirdDataset(root_dir=root_dir,csv_file=csv_file,transform=transform_train,split=Split.TRAIN)
+    #valid_datasetset = BirdDataset(root_dir=root_dir,csv_file=csv_file,transform=transform_valid,split=Split.VALID)
+    #test_dataset =  BirdDataset(root_dir=root_dir,csv_file=csv_file,transform=transform_valid,split=Split.TEST)
+
+    print('Loading .npz file, this will take a while...')
+    data_dict = np.load(npz_file)
+    print('Done loading .npz file')
+    print('Loading training split')
+    train_dataset = BirdDatasetNPZ(data_dict=data_dict,transform=transform_train,split=Split.TRAIN)
+    print('Loading valid split')
+    valid_datasetset = BirdDatasetNPZ(data_dict=data_dict,transform=transform_valid,split=Split.VALID)
+    print('Loading test split')
+    test_dataset =  BirdDatasetNPZ(data_dict=data_dict,transform=transform_valid,split=Split.TEST)
+    del data_dict
 
     train_loader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
     valid_loader = DataLoader(dataset=valid_datasetset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
@@ -70,7 +79,7 @@ def main():
                                        mode='min')
     
     model = EfficientNet_V2_S(lr=LEARNING_RATE,weight_decay=WEIGHT_DECAY,batch_size=BATCH_SIZE)
-    trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint])
+    trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint],accelerator='tpu',devices=1,precision='bf16')
     trainer.fit(model=model,train_dataloaders=train_loader,val_dataloaders=valid_loader)
 
     

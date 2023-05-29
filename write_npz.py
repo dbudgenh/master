@@ -3,7 +3,7 @@ from torchvision import transforms
 import numpy as np
 
 transform = transforms.Compose([transforms.Resize((224,224))])
-bird_dataset = BirdDataset(root_dir='data',csv_file='data/birds.csv',transform=transform)
+bird_dataset = BirdDataset(root_dir='C:/Users/david/Desktop/Python/master/data',csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',transform=transform)
 
 data = []
 labels = []
@@ -22,12 +22,12 @@ for i in range(len(bird_dataset)):
         if split == 'test':
                 split_int = 2
         dataset.append(split_int)
-data = np.array(data)
-labels = np.array(labels,dtype=np.uint16)
+data = np.array(data,dtype=np.uint8)
+labels = np.array(labels,dtype=np.int16)
 dataset = np.array(dataset,dtype=np.uint8)
 
 print(data.shape)
 print(labels.shape)
 print(dataset.shape)
 
-np.savez_compressed('dataset.npz',images=data,labels=labels,dataset=dataset)
+np.savez_compressed('C:/Users/david/Desktop/dataset.npz',images=data,labels=labels,dataset=dataset)
