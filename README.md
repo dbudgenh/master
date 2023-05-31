@@ -82,3 +82,4 @@ Prepare ppt distinction between my presentation and Leo
   - Other XAI techniques? https://openaccess.thecvf.com/content_cvpr_2018/papers/Li_Tell_Me_Where_CVPR_2018_paper.pdf
 
 lokal : 3.7it/s batch_size = 32 (total 2645it) -> Pro epoch 12minuten
+colab : 2.01it/s batch_size = 128 (total 662it) -> Pro epoch 5.5minuten

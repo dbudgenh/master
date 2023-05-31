@@ -8,10 +8,11 @@ import pytorch_lightning as pl
 import torch.optim as optim
 from torchmetrics import Accuracy,F1Score,MatthewsCorrCoef
 from lion_pytorch import Lion
+from abc import ABC
 
 NUM_CLASSES = 525
 
-class ImageClassifierBase(pl.LightningModule):
+class ImageClassifierBase(ABC,pl.LightningModule):
     def __init__(self,lr,weight_decay,batch_size):
         super().__init__()
         self.save_hyperparameters()

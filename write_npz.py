@@ -26,8 +26,29 @@ data = np.array(data,dtype=np.uint8)
 labels = np.array(labels,dtype=np.int16)
 dataset = np.array(dataset,dtype=np.uint8)
 
-print(data.shape)
-print(labels.shape)
-print(dataset.shape)
+# train_filter = dataset == 0
+# train_data  = data[train_filter]
+# train_labels = labels[train_filter]
 
-np.savez_compressed('C:/Users/david/Desktop/dataset.npz',images=data,labels=labels,dataset=dataset)
+# np.savez_compressed('C:/Users/david/Desktop/dataset_train.npz',images=train_data,labels=train_labels)
+
+# del train_data
+# del train_labels
+
+valid_filter = dataset == 1
+valid_data  = data[valid_filter]
+valid_labels = labels[valid_filter]
+
+np.savez_compressed('C:/Users/david/Desktop/dataset_valid.npz',images=valid_data,labels=valid_labels)
+
+del valid_data
+del valid_labels
+
+test_filter = dataset == 2
+test_data  = data[test_filter]
+test_labels = labels[test_filter]
+
+np.savez_compressed('C:/Users/david/Desktop/dataset_test.npz',images=test_data,labels=test_labels)
+
+
+
