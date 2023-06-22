@@ -3,7 +3,7 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch.nn as nn
 import torch 
 import torch.nn.functional as F
-from torchvision.models import efficientnet_b0,efficientnet_v2_s,efficientnet_v2_m,efficientnet_v2_l,EfficientNet_V2_S_Weights,EfficientNet_B0_Weights,EfficientNet_V2_L_Weights
+from torchvision.models import efficientnet_b0,efficientnet_v2_s,efficientnet_v2_m,efficientnet_v2_l,EfficientNet_V2_S_Weights,EfficientNet_V2_M_Weights,EfficientNet_B0_Weights,EfficientNet_V2_L_Weights
 import pytorch_lightning as pl
 import torch.optim as optim
 from torchmetrics import Accuracy,F1Score,MatthewsCorrCoef
@@ -80,10 +80,34 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.log("test_mcc",mcc,prog_bar=True,logger=True,batch_size=self.batch_size)
         return loss
 
-class PreTrainedBase(ImageClassifierBase,ABC):
-    def __init__(self,lr,weight_decay,batch_size,mode='pre_train'):
-        super().__init__(lr,weight_decay,batch_size) 
+class EfficientNetPretrainedBase(ImageClassifierBase,ABC):
+    def __init__(self,lr,weight_decay,batch_size,base_model,mode='pre_train'):
+        super().__init__(lr,weight_decay,batch_size)
+        print(f"Initializing model with lr={lr} weight_decay={weight_decay} batch_size={batch_size} mode={mode}")
+        self.model = base_model
         self.mode = mode
+        self.freeze_layers()
+        #Change final classification layer
+        in_features = in_features=self.model.classifier[1].in_features
+        self.model.classifier[1] = nn.Linear(in_features=in_features,out_features=NUM_CLASSES)
+    def configure_optimizers(self) -> Any:
+        if self.mode == 'pre_train':
+            optimizer = AdamW(self.parameters(),lr=self.lr,weight_decay=self.weight_decay)
+            scheduler = ReduceLROnPlateau(optimizer,mode='min',factor=0.2,patience=4)
+            return [optimizer],[{"scheduler": scheduler,'monitor':'validation_loss'}]
+        if self.mode == 'fine_tune':
+            optimizer = AdamW(self.parameters(),lr=self.lr,weight_decay=self.weight_decay)
+            scheduler = CosineAnnealingWarmRestarts(optimizer,T_0=100,T_mult=2,verbose=False)
+            return [optimizer],[{"scheduler": scheduler,'interval':'step'}]    
+    def forward(self,x):
+        out = self.model(x)
+        return out
+    def freeze_layers(self):
+        for param in self.model.parameters():
+            param.requires_grad = False
+    def unfreeze_layers(self):
+        for param in self.model.parameters():
+            param.requires_grad = True
 
 class EfficientNet_B0(ImageClassifierBase):
     def __init__(self,lr,weight_decay,batch_size):
@@ -136,39 +160,10 @@ class EfficientNet_V2_S(ImageClassifierBase):
         return out
     
     
-class EfficientNet_V2_S_Pretrained(ImageClassifierBase):
+class EfficientNet_V2_S_Pretrained(EfficientNetPretrainedBase):
     def __init__(self,lr,weight_decay,batch_size,mode='pre_train'):
-        print(f"Initializing model with lr={lr} weight_decay={weight_decay} batch_size={batch_size} mode={mode}")
-        super().__init__(lr,weight_decay,batch_size)
-        self.efficient_net = efficientnet_v2_s(weights=EfficientNet_V2_S_Weights.DEFAULT)
-        self.mode = mode
-        self.freeze_layers()
-        #Change final classification layer
-        in_features = in_features=self.efficient_net.classifier[1].in_features
-        self.efficient_net.classifier[1] = nn.Linear(in_features=in_features,out_features=NUM_CLASSES)
+        super().__init__(lr,weight_decay,batch_size,mode,base_model = efficientnet_v2_s(weights=EfficientNet_V2_S_Weights.DEFAULT))
         self.name = "EfficientNet_V2_S_Pretrained"
-
-    def configure_optimizers(self) -> Any:
-        if self.mode == 'pre_train':
-            optimizer = AdamW(self.parameters(),lr=self.lr,weight_decay=self.weight_decay)
-            scheduler = ReduceLROnPlateau(optimizer,mode='min',factor=0.2,patience=4)
-            return [optimizer],[{"scheduler": scheduler,'monitor':'validation_loss'}]
-        if self.mode == 'fine_tune':
-            optimizer = AdamW(self.parameters(),lr=self.lr,weight_decay=self.weight_decay)
-            scheduler = CosineAnnealingWarmRestarts(optimizer,T_0=100,T_mult=2,verbose=False)
-            return [optimizer],[{"scheduler": scheduler,'interval':'step'}]    
-
-    def forward(self,x):
-        out = self.efficient_net(x)
-        return out
-    
-    def freeze_layers(self):
-        #Freeze all layers
-        for param in self.efficient_net.parameters():
-            param.requires_grad = False
-    def unfreeze_layers(self):
-        for param in self.efficient_net.parameters():
-            param.requires_grad = True
 
 class EfficientNet_V2_M(ImageClassifierBase):
     def __init__(self,lr,weight_decay,batch_size):
@@ -178,6 +173,11 @@ class EfficientNet_V2_M(ImageClassifierBase):
     def forward(self,x):
         out = self.efficient_net(x)
         return out
+
+class EfficientNet_V2_M_Pretrained(EfficientNetPretrainedBase):
+    def __init__(self,lr,weight_decay,batch_size,mode='pre_train'):
+        super().__init__(lr,weight_decay,batch_size,base_model=efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.DEFAULT))
+        self.name = 'EfficientNet_V2_M_Pretrained'
     
 class EfficientNet_V2_L(ImageClassifierBase):
     def __init__(self,lr,weight_decay,batch_size):
@@ -188,40 +188,10 @@ class EfficientNet_V2_L(ImageClassifierBase):
         out = self.efficient_net(x)
         return out
 
-class EfficientNet_V2_L_Pretrained(ImageClassifierBase):
+class EfficientNet_V2_L_Pretrained(EfficientNetPretrainedBase):
     def __init__(self,lr,weight_decay,batch_size,mode='pre_train'):
-        print(f"Initializing model with lr={lr} weight_decay={weight_decay} batch_size={batch_size} mode={mode}")
-        super().__init__(lr,weight_decay,batch_size)
-        self.efficient_net = efficientnet_v2_l(weights=EfficientNet_V2_L_Weights.DEFAULT)
-        self.mode = mode
-        self.freeze_layers()
-        #Change final classification layer
-        in_features = in_features=self.efficient_net.classifier[1].in_features
-        self.efficient_net.classifier[1] = nn.Linear(in_features=in_features,out_features=NUM_CLASSES)
+        super().__init__(lr,weight_decay,batch_size,mode,base_model = efficientnet_v2_l(weights=EfficientNet_V2_S_Weights.DEFAULT))
         self.name = "EfficientNet_V2_L_Pretrained"
-
-    def configure_optimizers(self) -> Any:
-        if self.mode == 'pre_train':
-            optimizer = AdamW(self.parameters(),lr=self.lr,weight_decay=self.weight_decay)
-            scheduler = ReduceLROnPlateau(optimizer,mode='min',factor=0.2,patience=4)
-            return [optimizer],[{"scheduler": scheduler,'monitor':'validation_loss'}]
-        if self.mode == 'fine_tune':
-            optimizer = AdamW(self.parameters(),lr=self.lr,weight_decay=self.weight_decay)
-            scheduler = CosineAnnealingWarmRestarts(optimizer,T_0=100,T_mult=2,verbose=False)
-            return [optimizer],[{"scheduler": scheduler,'interval':'step'}]    
-        
-
-    def forward(self,x):
-        out = self.efficient_net(x)
-        return out
-    
-    def freeze_layers(self):
-        #Freeze all layers
-        for param in self.efficient_net.parameters():
-            param.requires_grad = False
-    def unfreeze_layers(self):
-        for param in self.efficient_net.parameters():
-            param.requires_grad = True
     
 class VisionTransformer_B_16(ImageClassifierBase): 
     pass

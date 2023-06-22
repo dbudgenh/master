@@ -8,13 +8,13 @@ from dataset import BirdDataModule,BirdDataset,BirdDataNPZModule
 from models import EfficientNet_V2_S_Pretrained,EfficientNet_V2_L_Pretrained
 import pytorch_lightning as pl
 
-CHECKPOINT_PATH = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_L_Pretrained_Pretrained_Adam/epoch=66_validation_loss=0.2575_validation_accuracy=0.94_validation_mcc=0.94.ckpt'
-
+#CHECKPOINT_PATH = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_L_Pretrained_Pretrained_Adam/epoch=66_validation_loss=0.2575_validation_accuracy=0.94_validation_mcc=0.94.ckpt'
+CHECKPOINT_PATH = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_L_Pretrained_Adam/epoch=0_validation_loss=0.0879_validation_accuracy=0.98_validation_mcc=0.96.ckpt'
 LEARNING_RATE_FINE_TUNE = 1e-4 #Should be much lower when fine-tuning
 WEIGHT_DECAY_FINE_TRAIN =1e-2
 EPOCHS_FINE_TUNE = 150
 BATCH_SIZE = 16
-NUM_WORKERS = 16
+NUM_WORKERS = 3
 IMAGENET_MEAN =(0.485, 0.456, 0.406)
 IMAGENET_STD = std=(0.229, 0.224, 0.225)
 
