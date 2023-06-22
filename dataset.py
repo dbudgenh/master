@@ -15,6 +15,10 @@ from torchvision.transforms import transforms
 from torchvision.transforms.v2 import AugMix
 from torch.utils.data import DataLoader
 from abc import ABC,abstractmethod
+import torch
+from torchvision.datasets import ImageFolder
+from torchvision.datasets.folder import default_loader
+import pickle
 
 class Split(Enum):
     TRAIN=1
@@ -26,6 +30,10 @@ class BirdDataset(Dataset):
         The data is stored in the dataframe
         On demand, the required data i.e. path to the image, the class-id etc. are returned
     """
+
+    DEFAULT_RESIZE_SIZE = (224,224)
+    MEAN = (0.4742, 0.4694, 0.3954)
+    STD = (0.2394, 0.2332, 0.2547)
 
     def __init__(self,root_dir,csv_file,transform=None,split=None) -> None:
         self.bird_frame = pd.read_csv(csv_file,delimiter=',')
@@ -44,21 +52,16 @@ class BirdDataset(Dataset):
 
     
     def __getitem__(self, idx):
-        if idx % 5000 == 0:
-            print(f'Loading {idx}-th example')
-        class_id =  self.bird_frame.iloc[idx,0]
+        class_id =  int(self.bird_frame.iloc[idx,0])
         base_path = self.bird_frame.iloc[idx,1]
         img_path = os.path.join(self.root_dir,base_path)
         label = self.bird_frame.iloc[idx,2]
         dataset = self.bird_frame.iloc[idx,3]
-        scientific_name = self.bird_frame.iloc[idx,4]
-        image = read_image(img_path) #output has shape (3,224,224)
-
-        sample = {'image': image, 'class_id': int(class_id), 'label': label,
-                  'dataset': dataset, 'scientific_name': scientific_name,'path':img_path, 'base_path':base_path}
+        #scientific_name = self.bird_frame.iloc[idx,4]
+        image = default_loader(img_path) #read_image(img_path) #output has shape (3,224,224)
         if self.transform:
-            sample['image'] = self.transform(image)
-        return sample
+            image = self.transform(image)
+        return image, class_id
     
 class BirdDatasetNPZ(Dataset):
     """Dataset containing images of birds
@@ -68,7 +71,7 @@ class BirdDatasetNPZ(Dataset):
     """
     def __init__(self,npz_file_path,transform=None) -> None:
         data_dict = np.load(npz_file_path)
-        self.images,self.labels = data_dict['images'],data_dict['labels']
+        self.images, self.labels = torch.tensor(data_dict['images']), torch.tensor(data_dict['labels'])
         self.transform = transform
     
 
@@ -77,42 +80,20 @@ class BirdDatasetNPZ(Dataset):
         return len(self.images)
     
     def __getitem__(self, idx):
-        if idx % 5000 == 0:
-            print(f'Loading {idx}-th example')
         #swap channels to be last, np.arrays should be HxWxC format
-        image = np.moveaxis(self.images[idx],0,-1)
-        label = self.labels[idx]
-        sample = {'image': image, 'class_id': int(label)}
+        image = self.images[idx]
+        label = int(self.labels[idx])
         if self.transform:
-            sample['image'] = self.transform(image)
-        return sample
+            image = self.transform(image)
+        return image,label
     
 class BaseDataModule(ABC,pl.LightningDataModule):
-    RESIZE_SIZE = (224,224)
-
-    def __init__(self,batch_size=32,num_workers=2):
+    def __init__(self,train_transform,valid_transform,batch_size=32,num_workers=2):
         super().__init__()
-
         self.batch_size = batch_size
         self.num_workers = num_workers
-        
-        self.train_transform  = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Resize(BirdDataModule.RESIZE_SIZE),
-            AugMix(severity=4,mixture_width=4,alpha=0.65),
-            transforms.CenterCrop(BirdDataModule.RESIZE_SIZE),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomVerticalFlip(),
-            transforms.RandomRotation(degrees=45),
-            transforms.ToTensor(), #0-255 -> 0-1
-            transforms.Normalize(mean=(0.4742, 0.4694, 0.3954),std=(0.2394, 0.2332, 0.2547))
-        ])
-        self.valid_transform = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Resize(BirdDataModule.RESIZE_SIZE),
-            transforms.ToTensor(), #0-255 -> 0-1
-            transforms.Normalize(mean=(0.4742, 0.4694, 0.3954),std=(0.2394, 0.2332, 0.2547))
-        ])
+        self.train_transform = train_transform
+        self.valid_transform = valid_transform
     
     @abstractmethod
     def train_data(self):
@@ -129,11 +110,14 @@ class BaseDataModule(ABC,pl.LightningDataModule):
     
     def setup(self,stage:str):
         if stage == 'fit':
+            print(f"Calling stage {stage} (fit)")
             self.training_data = self.train_data()
             self.validation_data = self.valid_data()
         if stage == 'test':
+            print(f"Calling stage {stage} (test)")
             self.testing_data = self.test_data()
         if stage == 'predict':
+            print(f"Calling stage {stage} (predict)")
             self.predicting_data = self.predict_data()
     
     def train_dataloader(self):
@@ -149,8 +133,8 @@ class BaseDataModule(ABC,pl.LightningDataModule):
         return DataLoader(dataset=self.predicting_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
 
 class BirdDataNPZModule(BaseDataModule):
-    def __init__(self,train_npz_path,valid_npz_path,test_npz_path,batch_size=32,num_workers=2):
-        super().__init__(batch_size=batch_size,num_workers=num_workers)
+    def __init__(self,train_npz_path,valid_npz_path,test_npz_path,train_transform,valid_transform,batch_size=32,num_workers=2):
+        super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers)
         self.train_npz_path = train_npz_path
         self.valid_npz_path = valid_npz_path
         self.test_npz_path = test_npz_path
@@ -175,8 +159,8 @@ class BirdDataNPZModule(BaseDataModule):
 
 
 class BirdDataModule(BaseDataModule):
-    def __init__(self,root_dir,csv_file,batch_size=32,num_workers=2):
-        super().__init__(batch_size=batch_size,num_workers=num_workers)
+    def __init__(self,root_dir,csv_file,train_transform,valid_transform,batch_size=32,num_workers=2,):
+        super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers)
         self.root_dir = root_dir
         self.csv_file = csv_file
         self.bird_frame = pd.read_csv(self.csv_file,delimiter=',')
@@ -189,3 +173,29 @@ class BirdDataModule(BaseDataModule):
         return BirdDataset(root_dir=self.root_dir,csv_file=self.csv_file,transform=self.valid_transform,split=Split.TEST)
     def predict_data(self):
         return BirdDataset(root_dir=self.root_dir,csv_file=self.csv_file,transform=self.valid_transform,split=Split.TEST)
+    
+class BirdDataModuleV2(BaseDataModule):
+    def __init__(self,root_dir,train_transform,valid_transform,batch_size=32,num_workers=2):
+        super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers)
+        self.root_dir = root_dir
+        self.mappings = self._load_dict('mappings.pkl')
+
+    def _load_dict(self,file_name):
+        with open(file_name, 'rb') as f:
+            return pickle.load(f)
+    
+        """The labels for the classes are sorted aphabetically by bird name. This is different from the bird.csv file
+           To keep the labels consistent, we map the labels to that of the birds.csv file
+        """
+    def _convert_label(self,label):
+        return self.mappings[label]
+
+
+    def train_data(self):
+        return ImageFolder(root=self.root_dir + "/train" ,transform=self.train_transform,target_transform=self._convert_label)
+    def valid_data(self):
+        return ImageFolder(root=self.root_dir + "/valid" ,transform=self.valid_transform,target_transform=self._convert_label)
+    def test_data(self):
+        return ImageFolder(root=self.root_dir + "/test" ,transform=self.valid_transform,target_transform=self._convert_label)
+    def predict_data(self):
+        return ImageFolder(root=self.root_dir + "/test" ,transform=self.valid_transform,target_transform=self._convert_label)

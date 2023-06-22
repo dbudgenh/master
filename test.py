@@ -2,7 +2,7 @@ from train import BATCH_SIZE,NUM_WORKERS,CHECKPOINT_PATH
 from torchvision.transforms import transforms
 from dataset import BirdDataset,Split
 from torch.utils.data import DataLoader
-from models import EfficientNet_V2_M
+from models import EfficientNet_V2_M,EfficientNet_V2_S
 import pytorch_lightning as pl
 import torch
 from pytorch_grad_cam import GradCAM, ScoreCAM,HiResCAM,GradCAMElementWise
@@ -26,14 +26,11 @@ def main():
     test_dataset =  BirdDataset(root_dir='C:/Users/david/Desktop/Python/master/data/',csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',transform=transform_valid,split=Split.TEST)
     test_loader = DataLoader(dataset=test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS) 
 
-    sample = next(iter(test_loader))
-    input_tensor = sample['image']
-    labels = sample['class_id']
-    paths = sample['path']
+    ckpt_path = 'C:/Users/david/Desktop/Python/master/statistics/epoch=33_validation_loss=0.1847_validation_accuracy=0.95_validation_mcc=0.94.ckpt'
+    input_tensor,labels,paths = next(iter(test_loader))
+    model = EfficientNet_V2_S.load_from_checkpoint(checkpoint_path=ckpt_path)
 
-    model = EfficientNet_V2_M.load_from_checkpoint(checkpoint_path=CHECKPOINT_PATH)
-
-    target_layers = [model.efficient_net.features[2]]
+    target_layers = [model.efficient_net.features[-3]]
     cam = GradCAM(model=model.efficient_net,target_layers=target_layers,use_cuda=True)
     targets = [ClassifierOutputTarget(524)]*BATCH_SIZE
     grayscale_cam = cam(input_tensor=input_tensor, targets=targets,aug_smooth=True,eigen_smooth=False)

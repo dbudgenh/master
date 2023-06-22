@@ -23,7 +23,7 @@ All documents and code used for the master thesis are stored here
 ### Checklist
 
 - [x] Load bird data
-- [ ] Load snail data
+- [ ] Load snail data [here](https://images.cv/dataset/snail-image-classification-dataset)
 - [x] Show data
 - [x] Prepare data (transform,normalize)
 - [x] Load model (naive/ResNet/state-of-the-art)
@@ -44,7 +44,7 @@ All documents and code used for the master thesis are stored here
 
 # Questions
 
-1. GPU Server? Log-in credentials? -> Ask gemma
+1. GPU Server? Log-in credentials? -> Ask gemma [here](https://images.cv/dataset/snail-image-classification-dataset)
 2. Google Colab? Do we get TPUs? Can it run for multiple days without interruption? -> Check pro version for google colab
 3. Snail dataset? need it NOW. -> Ask gemma
 4. KD Implementations? https://josehoras.github.io/knowledge-distillation/
@@ -83,3 +83,16 @@ Prepare ppt distinction between my presentation and Leo
 
 lokal : 3.7it/s batch_size = 32 (total 2645it) -> Pro epoch 12minuten
 colab : 2.01it/s batch_size = 128 (total 662it) -> Pro epoch 5.5minuten
+
+-Disentagnling features for Species (not especially snails)
+-Methods for XAI on Transformer
+
+-Huggingfaces example for dataloading VisionTransformer
+-Dataloading for ViT is different
+
+-What techniques used for multi teacher
+-Technique about weighting the different teachers
+-Other XAI technique
+-Compare methods to other thesis
+-Visualization metrics ()
+-Make the experiments similar between thesis
