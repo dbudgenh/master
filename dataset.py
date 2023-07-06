@@ -55,7 +55,7 @@ class BirdDataset(Dataset):
         class_id =  int(self.bird_frame.iloc[idx,0])
         base_path = self.bird_frame.iloc[idx,1]
         img_path = os.path.join(self.root_dir,base_path)
-        label = self.bird_frame.iloc[idx,2]
+        #label = self.bird_frame.iloc[idx,2]
         dataset = self.bird_frame.iloc[idx,3]
         #scientific_name = self.bird_frame.iloc[idx,4]
         image = default_loader(img_path) #read_image(img_path) #output has shape (3,224,224)
@@ -64,10 +64,11 @@ class BirdDataset(Dataset):
         return image, class_id
     
 class BirdDatasetNPZ(Dataset):
-    """Dataset containing images of birds
+    """Dataset containing images of birds. The dataset gets stored in memory, by loading the .npz (numpy compressed file) file
         In contrast to the above dataset, the complete dataset is stored in memory!
         This has the additional benefit that no network operations take place when loading the image
         In exchange: the complete dataset (13GB) has to be stored in memory.
+        Faster operations in exchange for memory 
     """
     def __init__(self,npz_file_path,transform=None) -> None:
         data_dict = np.load(npz_file_path)
@@ -88,12 +89,17 @@ class BirdDatasetNPZ(Dataset):
         return image,label
     
 class BaseDataModule(ABC,pl.LightningDataModule):
-    def __init__(self,train_transform,valid_transform,batch_size=32,num_workers=2):
+    """Base class for all the data modules, this class should never be instantiate directly, but inherited from.
+    Data modules contain the train/valid/test/predict datasets, these methods should be implemented by the inherited class.
+
+    """
+    def __init__(self,train_transform,valid_transform,batch_size=32,num_workers=2,collate_fn=None):
         super().__init__()
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.train_transform = train_transform
         self.valid_transform = valid_transform
+        self.collate_fn = collate_fn
     
     @abstractmethod
     def train_data(self):
@@ -121,20 +127,20 @@ class BaseDataModule(ABC,pl.LightningDataModule):
             self.predicting_data = self.predict_data()
     
     def train_dataloader(self):
-        return DataLoader(dataset=self.training_data, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
+        return DataLoader(dataset=self.training_data, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers,collate_fn=self.collate_fn,pin_memory=True)
     
     def val_dataloader(self):
-        return DataLoader(dataset=self.validation_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        return DataLoader(dataset=self.validation_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers,pin_memory=True)
     
     def test_dataloader(self):
-        return DataLoader(dataset=self.testing_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        return DataLoader(dataset=self.testing_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers,pin_memory=True)
     
     def predict_dataloader(self):
-        return DataLoader(dataset=self.predicting_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        return DataLoader(dataset=self.predicting_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers,pin_memory=True)
 
 class BirdDataNPZModule(BaseDataModule):
-    def __init__(self,train_npz_path,valid_npz_path,test_npz_path,train_transform,valid_transform,batch_size=32,num_workers=2):
-        super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers)
+    def __init__(self,train_npz_path,valid_npz_path,test_npz_path,train_transform,valid_transform,batch_size=32,num_workers=2,collate_fn=None):
+        super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers,collate_fn=collate_fn)
         self.train_npz_path = train_npz_path
         self.valid_npz_path = valid_npz_path
         self.test_npz_path = test_npz_path
@@ -159,8 +165,8 @@ class BirdDataNPZModule(BaseDataModule):
 
 
 class BirdDataModule(BaseDataModule):
-    def __init__(self,root_dir,csv_file,train_transform,valid_transform,batch_size=32,num_workers=2,):
-        super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers)
+    def __init__(self,root_dir,csv_file,train_transform,valid_transform,batch_size=32,num_workers=2,collate_fn=None):
+        super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers,collate_fn=collate_fn)
         self.root_dir = root_dir
         self.csv_file = csv_file
         self.bird_frame = pd.read_csv(self.csv_file,delimiter=',')
@@ -175,8 +181,8 @@ class BirdDataModule(BaseDataModule):
         return BirdDataset(root_dir=self.root_dir,csv_file=self.csv_file,transform=self.valid_transform,split=Split.TEST)
     
 class BirdDataModuleV2(BaseDataModule):
-    def __init__(self,root_dir,train_transform,valid_transform,batch_size=32,num_workers=2):
-        super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers)
+    def __init__(self,root_dir,train_transform,valid_transform,batch_size=32,num_workers=2,collate_fn=None):
+        super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers,collate_fn=collate_fn)
         self.root_dir = root_dir
         self.mappings = self._load_dict('mappings.pkl')
 

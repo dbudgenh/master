@@ -9,9 +9,8 @@ std =  BirdDataset.STD
 def standardize(x):
         return x / 255.0
 
-
 transform_train = transforms.Compose([transforms.Resize((224,224)),])
-npz_file_path = 'C:/Users/david/Desktop/dataset_valid.npz'
+npz_file_path = 'C:/Users/david/Desktop/dataset_train.npz'
 bird_dataset = BirdDatasetNPZ(npz_file_path=npz_file_path,transform=transform_train)
 
 for i in range(len(bird_dataset)):
