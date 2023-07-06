@@ -8,7 +8,7 @@ import pytorch_lightning as pl
 TEACHER_CHECKPOINT = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_L_Finetuned_Adam/epoch=28_validation_loss=0.0459_validation_accuracy=0.99_validation_mcc=0.99.ckpt'
 LEARNING_RATE = 0.1
 WEIGHT_DECAY = 2e-5
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 LR_SCHEDULER = 'cosineannealinglr'
 LR_WARMUP_EPOCHS = 5
 LR_WARMUP_METHOD = 'linear'

@@ -270,11 +270,11 @@ class KnowledgeDistillationModule(pl.LightningModule):
         mcc = self.mcc(output_student,labels)
 
 
-        self.log("valid_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("valid_kd_loss",kd_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("valid_cr_loss",cr_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("valid_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("valid_mcc",mcc,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("validation_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("validation_kd_loss",kd_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("validation_cr_loss",cr_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("validation_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("validation_mcc",mcc,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         return total_loss
     
     def test_step(self,batch,batch_idx):
