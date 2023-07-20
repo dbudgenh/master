@@ -127,16 +127,37 @@ class BaseDataModule(ABC,pl.LightningDataModule):
             self.predicting_data = self.predict_data()
     
     def train_dataloader(self):
-        return DataLoader(dataset=self.training_data, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers,collate_fn=self.collate_fn,pin_memory=True)
+        return DataLoader(dataset=self.training_data, 
+                          batch_size=self.batch_size, 
+                          shuffle=True, 
+                          num_workers=self.num_workers,
+                          collate_fn=self.collate_fn,
+                          pin_memory=True,
+                          persistent_workers=False)
     
     def val_dataloader(self):
-        return DataLoader(dataset=self.validation_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers,pin_memory=True)
+        return DataLoader(dataset=self.validation_data, 
+                          batch_size=self.batch_size, 
+                          shuffle=False, 
+                          num_workers=self.num_workers,
+                          pin_memory=True,
+                          persistent_workers=False)
     
     def test_dataloader(self):
-        return DataLoader(dataset=self.testing_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers,pin_memory=True)
+        return DataLoader(dataset=self.testing_data, 
+                          batch_size=self.batch_size,
+                          shuffle=False,
+                          num_workers=self.num_workers,
+                          pin_memory=True,
+                          persistent_workers=False)
     
     def predict_dataloader(self):
-        return DataLoader(dataset=self.predicting_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers,pin_memory=True)
+        return DataLoader(dataset=self.predicting_data, 
+                          batch_size=self.batch_size,
+                          shuffle=False, 
+                          num_workers=self.num_workers,
+                          pin_memory=True,
+                          persistent_workers=False)
 
 class BirdDataNPZModule(BaseDataModule):
     def __init__(self,train_npz_path,valid_npz_path,test_npz_path,train_transform,valid_transform,batch_size=32,num_workers=2,collate_fn=None):

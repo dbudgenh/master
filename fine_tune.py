@@ -11,7 +11,7 @@ from transforms import default_transforms,default_collate_fn
 
 #CHECKPOINT_PATH = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_M_Pretrained_Adam/epoch=59_validation_loss=0.6902_validation_accuracy=0.83_validation_mcc=0.82.ckpt'
 CHECKPOINT_PATH = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_L_Pretrained_Adam/epoch=66_validation_loss=0.2575_validation_accuracy=0.94_validation_mcc=0.94.ckpt'
-LEARNING_RATE_FINE_TUNE = 5e-5 #Should be much lower when fine-tuning
+LEARNING_RATE_FINE_TUNE = 1e-3 #Should be much lower when fine-tuning
 WEIGHT_DECAY_FINE_TRAIN = 2e-5
 EPOCHS_FINE_TUNE = 150
 BATCH_SIZE = 16

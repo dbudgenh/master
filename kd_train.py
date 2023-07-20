@@ -6,9 +6,10 @@ from pytorch_lightning.callbacks import ModelCheckpoint,LearningRateMonitor
 import pytorch_lightning as pl
 
 TEACHER_CHECKPOINT = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_L_Finetuned_Adam/epoch=28_validation_loss=0.0459_validation_accuracy=0.99_validation_mcc=0.99.ckpt'
-LEARNING_RATE = 0.1
+LEARNING_RATE = 0.5
+MOMENTUM = 0.9
 WEIGHT_DECAY = 2e-5
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 LR_SCHEDULER = 'cosineannealinglr'
 LR_WARMUP_EPOCHS = 5
 LR_WARMUP_METHOD = 'linear'
@@ -16,7 +17,7 @@ LR_WARMUP_DECAY = 0.01
 EPOCHS = 300
 ALPHA = 0.95
 TEMPERATURE = 3.5
-NUM_WORKERS = 16
+NUM_WORKERS = 0
 
 def main():
     torch.set_float32_matmul_precision('medium')
@@ -35,6 +36,7 @@ def main():
                                           teacher_model=teacher,
                                           lr=LEARNING_RATE,
                                           weight_decay=WEIGHT_DECAY,
+                                          momentum=MOMENTUM,
                                           batch_size=BATCH_SIZE,
                                           lr_scheduler=LR_SCHEDULER,
                                           lr_warmup_epochs=LR_WARMUP_EPOCHS,
@@ -43,15 +45,19 @@ def main():
                                           epochs=EPOCHS,
                                           alpha=ALPHA,
                                           T=TEMPERATURE)
-    lr_monitor = LearningRateMonitor(logging_interval='step',log_momentum=False)
+    lr_monitor = LearningRateMonitor(logging_interval='step',
+                                     log_momentum=False)
     model_checkpoint = ModelCheckpoint(
-                                       dirpath=f'C:/Users/david/Desktop/Python/master/statistics/{kd_model.name}_Adam',
+                                       dirpath=rf'C:/Users/david/Desktop/test',
+                                       #dirpath=rf'C:/Users/david/Desktop/Python/master/statistics/{kd_model.name}_Adam',
                                        filename="{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}", 
                                        save_top_k=1,
+                                       save_weights_only=False,
                                        monitor="validation_loss",
                                        mode='min')
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precision='bf16-mixed')
-    trainer.fit(model=kd_model,datamodule=datamodule)
+    ckpt_path = 'C:/Users/david/Desktop/test/epoch=61_validation_loss=2.7033_validation_accuracy=0.96_validation_mcc=0.93.ckpt'
+    trainer.fit(model=kd_model,datamodule=datamodule,ckpt_path=ckpt_path)
 
 if __name__ == '__main__':
     main()

@@ -9,8 +9,9 @@ from pytorch_lightning.callbacks import ModelCheckpoint,LearningRateMonitor
 import pytorch_lightning as pl
 from transforms import default_transforms,default_collate_fn
 
-LEARNING_RATE_PRE_TRAIN = 0.01
+LEARNING_RATE_PRE_TRAIN = 0.5
 WEIGHT_DECAY_PRE_TRAIN = 0.00002
+MOMENTUM=0.9
 EPOCHS_PRE_TRAIN = 100
 BATCH_SIZE = 128
 NUM_WORKERS = 16
@@ -34,6 +35,7 @@ def main():
     #START PRE-TRAINING
     model = EfficientNet_V2_L_Pretrained(lr=LEARNING_RATE_PRE_TRAIN,
                                          weight_decay=WEIGHT_DECAY_PRE_TRAIN, 
+                                         momentum=MOMENTUM,
                                          batch_size=BATCH_SIZE,
                                          epochs=EPOCHS_PRE_TRAIN,
                                          training_mode='pre_train')

@@ -20,7 +20,8 @@ BATCH_SIZE = 16 #128 is optimal for TPUs, use multiples of 64 that fit into memo
 
 EPOCHS = 300
 
-LEARNING_RATE = 0.005
+LEARNING_RATE = 0.5
+MOMENTUM=0.9
 LR_SCHEDULER = 'cosineannealinglr'
 LR_WARMUP_EPOCHS = 5
 LR_WARMUP_METHOD = 'linear'
@@ -47,6 +48,7 @@ def main():
     
     model = EfficientNet_V2_S(lr=LEARNING_RATE,
                               weight_decay=WEIGHT_DECAY,
+                              momentum=MOMENTUM,
                               norm_weight_decay=NORM_WEIGHT_DECAY,
                               batch_size=BATCH_SIZE,
                               label_smoothing=LABEL_SMOOTHING,
@@ -58,7 +60,7 @@ def main():
 
     lr_monitor = LearningRateMonitor(logging_interval='step',log_momentum=False)
     model_checkpoint = ModelCheckpoint(
-                                       dirpath=f'C:/Users/david/Desktop/Python/master/statistics/{model.name}_Adam',
+                                       dirpath=rf'C:/Users/david/Desktop/Python/master/statistics/{model.name}_Adam',
                                        filename="{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}", 
                                        save_top_k=1,
                                        monitor="validation_loss",

@@ -11,16 +11,17 @@ import torch.optim as optim
 from torchmetrics import Accuracy,F1Score,MatthewsCorrCoef
 from lion_pytorch import Lion
 from abc import ABC,abstractmethod
-from torch.optim import AdamW
+from torch.optim import AdamW,SGD
 from torch.optim.lr_scheduler import CosineAnnealingLR,CosineAnnealingWarmRestarts,ExponentialLR,ReduceLROnPlateau,StepLR,LinearLR,SequentialLR
 from knowledge_distillation import knowledge_distillation_loss
 import utils
 
 NUM_CLASSES = 525
 class ImageClassifierBase(ABC,pl.LightningModule):
-    def __init__(self,lr=0.01,
+    def __init__(self,lr=0.1,
                  batch_size=32,
                  epochs=150,
+                 momentum=0.9,
                  weight_decay=2e-5,
                  norm_weight_decay=0.0,
                  label_smoothing=0.1,
@@ -32,6 +33,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.lr = lr
+        self.momentum = momentum
         self.weight_decay = weight_decay
         self.batch_size = batch_size
         self.label_smoothing = label_smoothing
@@ -49,6 +51,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
     def _print_parameters(self):
         print(f''' Model was configured with the following parameters:
         lr={self.lr}
+        momentum={self.momentum}
         lr_scheduler={self.lr_scheduler}
         lr_warmup_epochs={self.lr_warmup_epochs}
         lr_warmup_method={self.lr_warmup_method}
@@ -67,18 +70,25 @@ class ImageClassifierBase(ABC,pl.LightningModule):
             self.norm_weight_decay,
             None
         )
-        optimizer = AdamW(parameters,lr=self.lr,weight_decay=self.weight_decay)
+        #optimizer = AdamW(parameters,lr=self.lr,weight_decay=self.weight_decay)
+        optimizer = SGD(parameters,lr=self.lr,momentum=self.momentum,weight_decay=self.weight_decay)
         if self.lr_scheduler == 'cosineannealinglr':
             scheduler = CosineAnnealingLR(optimizer, T_max=self.epochs - self.lr_warmup_epochs)
         else:
-            scheduler = CosineAnnealingWarmRestarts(optimizer,T_0=2500,T_mult=1,verbose=False)
+            raise RuntimeError(
+                f"Invalid lr scheduler '{self.lr_scheduler}'. Only cosineannealinglr is supported."
+            )
         if self.lr_warmup_epochs > 0:
             if self.lr_warmup_method == 'linear':
                 warmup_lr_scheduler = LinearLR(optimizer, start_factor=self.lr_warmup_decay, total_iters=self.lr_warmup_epochs)
+            else:
+                raise RuntimeError(
+                f"Invalid lr warmup method '{self.lr_warmup_method}'. Only linear is supported."
+            )
             lr_scheduler = SequentialLR(optimizer,schedulers=[warmup_lr_scheduler,scheduler],milestones=[self.lr_warmup_epochs])
         else :
             lr_scheduler = scheduler
-        return [optimizer],[{"scheduler": lr_scheduler}] 
+        return [optimizer],[{"scheduler": lr_scheduler,'interval':'epoch'}] 
     
     def training_step(self, batch,batch_idx):
         inputs, labels = batch
@@ -123,9 +133,10 @@ class ImageClassifierBase(ABC,pl.LightningModule):
     
 
 class EfficientNetPretrainedBase(ImageClassifierBase,ABC):
-    def __init__(self,lr,weight_decay,batch_size,epochs,norm_weight_decay=0.0,label_smoothing=0.1,training_mode='pre_train'):
+    def __init__(self,lr,weight_decay,momentum,batch_size,epochs,norm_weight_decay=0.0,label_smoothing=0.1,training_mode='pre_train'):
         super().__init__(lr=lr,
                         batch_size=batch_size,
+                        momentum=momentum,
                         epochs=epochs,
                          weight_decay=weight_decay,
                          norm_weight_decay=norm_weight_decay,
@@ -148,11 +159,11 @@ class EfficientNetPretrainedBase(ImageClassifierBase,ABC):
 
     def configure_optimizers(self) -> Any:
         if self.training_mode == 'pre_train':
-            optimizer = AdamW(self.parameters(),lr=self.lr,weight_decay=self.weight_decay)
+            optimizer = SGD(self.parameters,lr=self.lr,momentum=self.momentum,weight_decay=self.weight_decay)
             scheduler = ReduceLROnPlateau(optimizer,mode='min',factor=0.2,patience=4)
             return [optimizer],[{"scheduler": scheduler,'monitor':'validation_loss'}]
         if self.training_mode == 'fine_tune':
-            optimizer = AdamW(self.parameters(),lr=self.lr,weight_decay=self.weight_decay)
+            optimizer = SGD(self.parameters(),lr=self.lr,weight_decay=self.weight_decay)
             scheduler = CosineAnnealingWarmRestarts(optimizer,T_0=2500,T_mult=1,verbose=False)
             return [optimizer],[{"scheduler": scheduler,'interval':'step'}]    
     def forward(self,x):
@@ -167,7 +178,8 @@ class EfficientNetPretrainedBase(ImageClassifierBase,ABC):
 
 class KnowledgeDistillationModule(pl.LightningModule):
     def __init__(self,student_model,teacher_model,
-                 lr=0.01,
+                 lr=0.1,
+                 momentum=0.9,
                  weight_decay=2e-5,
                  norm_weight_decay=0.0,
                  batch_size=32,
@@ -186,6 +198,7 @@ class KnowledgeDistillationModule(pl.LightningModule):
         self.teacher_model.freeze_layers()
         self.lr = lr
         self.weight_decay = weight_decay
+        self.momentum = momentum
         self.norm_weight_decay = norm_weight_decay
         self.batch_size = batch_size
         self.lr_scheduler = lr_scheduler
@@ -210,18 +223,25 @@ class KnowledgeDistillationModule(pl.LightningModule):
             self.norm_weight_decay,
             None
         )
-        optimizer = AdamW(parameters,lr=self.lr,weight_decay=self.weight_decay)
+        #optimizer = AdamW(parameters,lr=self.lr,weight_decay=self.weight_decay)
+        optimizer = SGD(parameters,lr=self.lr,momentum=self.momentum,weight_decay=self.weight_decay)
         if self.lr_scheduler == 'cosineannealinglr':
             scheduler = CosineAnnealingLR(optimizer, T_max=self.epochs - self.lr_warmup_epochs)
         else:
-            scheduler = CosineAnnealingWarmRestarts(optimizer,T_0=2500,T_mult=1,verbose=False)
+            raise RuntimeError(
+                f"Invalid lr scheduler '{self.lr_scheduler}'. Only cosineannealinglr is supported."
+            )
         if self.lr_warmup_epochs > 0:
             if self.lr_warmup_method == 'linear':
                 warmup_lr_scheduler = LinearLR(optimizer, start_factor=self.lr_warmup_decay, total_iters=self.lr_warmup_epochs)
+            else:
+                raise RuntimeError(
+                f"Invalid lr warmup method '{self.lr_warmup_method}'. Only linear is supported."
+            )
             lr_scheduler = SequentialLR(optimizer,schedulers=[warmup_lr_scheduler,scheduler],milestones=[self.lr_warmup_epochs])
         else :
             lr_scheduler = scheduler
-        return [optimizer],[{"scheduler": lr_scheduler}] 
+        return [optimizer],[{"scheduler": lr_scheduler,'interval':'epoch'}] 
     
     def training_step(self, batch,batch_idx):
         images, labels = batch
@@ -305,8 +325,14 @@ class KnowledgeDistillationModule(pl.LightningModule):
         return total_loss
 
 class EfficientNet_B0(ImageClassifierBase):
-    def __init__(self,lr,weight_decay,batch_size):
-        super().__init__(lr,weight_decay,batch_size)
+    def __init__(self,lr=0.1,
+                 weight_decay=2e-5,
+                 momentum=0.9,
+                 batch_size=32):
+        super().__init__(lr=lr,
+                         weight_decay=weight_decay,
+                         momentum=momentum,
+                         batch_size=batch_size)
         self.efficient_net = efficientnet_b0(weights=None, num_classes=NUM_CLASSES)
     def forward(self,x):
         out = self.efficient_net(x)
@@ -317,9 +343,10 @@ class EfficientNet_B0_Pretrained(ImageClassifierBase):
     pass
     
 class EfficientNet_V2_S(ImageClassifierBase):
-    def __init__(self,lr=0.01,
+    def __init__(self,lr=0.1,
                  weight_decay=0.00002,
                  batch_size=32,
+                 momentum=0.9,
                  label_smoothing=0.1,
                  lr_scheduler='cosineannealinglr',
                  lr_warmup_epochs=5,
@@ -331,6 +358,7 @@ class EfficientNet_V2_S(ImageClassifierBase):
                          batch_size=batch_size,
                          epochs=epochs,
                          weight_decay=weight_decay,
+                         momentum=momentum,
                          norm_weight_decay=norm_weight_decay,
                          label_smoothing=label_smoothing,
                          lr_scheduler=lr_scheduler,
@@ -343,9 +371,15 @@ class EfficientNet_V2_S(ImageClassifierBase):
         out = self.efficient_net(x)
         return out
 class EfficientNet_V2_S_Pretrained(EfficientNetPretrainedBase):
-    def __init__(self,lr,weight_decay,batch_size,epochs,training_mode='pre_train'):
+    def __init__(self,lr=0.1,
+                 weight_decay=2e-5,
+                 momentum=0.9,
+                 batch_size=32,
+                 epochs=150,
+                 training_mode='pre_train'):
         super().__init__(lr=lr,
                          weight_decay=weight_decay,
+                         momentum=momentum,
                          batch_size=batch_size,
                          epochs=epochs,
                          training_mode=training_mode)
@@ -355,6 +389,7 @@ class EfficientNet_V2_S_Pretrained(EfficientNetPretrainedBase):
 class EfficientNet_V2_M(ImageClassifierBase):
     def __init__(self,lr=0.01,
                  weight_decay=0.00002,
+                 momentum=0.9,
                  batch_size=32,
                  label_smoothing=0.1,
                  lr_scheduler='cosineannealinglr',
@@ -367,6 +402,7 @@ class EfficientNet_V2_M(ImageClassifierBase):
                          batch_size=batch_size,
                          epochs=epochs,
                          weight_decay=weight_decay,
+                         momentum=momentum,
                          norm_weight_decay=norm_weight_decay,
                          label_smoothing=label_smoothing,
                          lr_scheduler=lr_scheduler,
@@ -379,9 +415,10 @@ class EfficientNet_V2_M(ImageClassifierBase):
         out = self.efficient_net(x)
         return out
 class EfficientNet_V2_M_Pretrained(EfficientNetPretrainedBase):
-    def __init__(self,lr,weight_decay,batch_size,epochs,training_mode='pre_train'):
+    def __init__(self,lr,weight_decay,momentum,batch_size,epochs,training_mode='pre_train'):
         super().__init__(lr=lr,
                          weight_decay=weight_decay,
+                         momentum=momentum,
                          batch_size=batch_size,
                          epochs=epochs,
                          training_mode=training_mode)
@@ -391,6 +428,7 @@ class EfficientNet_V2_M_Pretrained(EfficientNetPretrainedBase):
 class EfficientNet_V2_L(ImageClassifierBase):
     def __init__(self,lr=0.01,
                  weight_decay=0.00002,
+                 momentum=0.9,
                  batch_size=32,
                  label_smoothing=0.1,
                  lr_scheduler='cosineannealinglr',
@@ -403,6 +441,7 @@ class EfficientNet_V2_L(ImageClassifierBase):
                          batch_size=batch_size,
                          epochs=epochs,
                          weight_decay=weight_decay,
+                         momentum=momentum,
                          norm_weight_decay=norm_weight_decay,
                          label_smoothing=label_smoothing,
                          lr_scheduler=lr_scheduler,
@@ -418,10 +457,11 @@ class EfficientNet_V2_L(ImageClassifierBase):
         for param in self.efficient_net.parameters():
             param.requires_grad = False
 class EfficientNet_V2_L_Pretrained(EfficientNetPretrainedBase):
-    def __init__(self,lr,weight_decay,batch_size,epochs,training_mode='pre_train'):
+    def __init__(self,lr,weight_decay,momentum,batch_size,epochs,training_mode='pre_train'):
         super().__init__(lr=lr,
                          weight_decay=weight_decay,
                          batch_size=batch_size,
+                         momentum=momentum,
                          epochs=epochs,
                          training_mode=training_mode)
         self.name = "EfficientNet_V2_L_Pretrained"
