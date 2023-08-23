@@ -59,13 +59,14 @@ def main():
                               epochs=EPOCHS)
 
     lr_monitor = LearningRateMonitor(logging_interval='step',log_momentum=False)
+    #+ f"_version={model.logger.version}"
     model_checkpoint = ModelCheckpoint(
                                        dirpath=rf'C:/Users/david/Desktop/Python/master/statistics/{model.name}_Adam',
-                                       filename="{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}", 
+                                       filename="{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}" , 
                                        save_top_k=1,
                                        monitor="validation_loss",
                                        mode='min')
-    trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precision='bf16-mixed') #
+    trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precission='bf16-mixed') #
     trainer.fit(model=model,datamodule=datamodule,ckpt_path=CHECKPOINT_PATH)
 
     #TODO: copy lightning_logs into statistic directory

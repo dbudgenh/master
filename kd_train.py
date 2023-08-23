@@ -9,15 +9,15 @@ TEACHER_CHECKPOINT = 'C:/Users/david/Desktop/Python/master/statistics/EfficientN
 LEARNING_RATE = 0.5
 MOMENTUM = 0.9
 WEIGHT_DECAY = 2e-5
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 LR_SCHEDULER = 'cosineannealinglr'
 LR_WARMUP_EPOCHS = 5
 LR_WARMUP_METHOD = 'linear'
 LR_WARMUP_DECAY = 0.01
-EPOCHS = 300
+EPOCHS = 500
 ALPHA = 0.95
 TEMPERATURE = 3.5
-NUM_WORKERS = 0
+NUM_WORKERS = 12
 
 def main():
     torch.set_float32_matmul_precision('medium')
@@ -29,7 +29,6 @@ def main():
                                 batch_size=BATCH_SIZE,
                                 num_workers=NUM_WORKERS,
                                 collate_fn=None)
-
     teacher = EfficientNet_V2_L.load_from_checkpoint(checkpoint_path=TEACHER_CHECKPOINT)
     student = EfficientNet_V2_S()
     kd_model= KnowledgeDistillationModule(student_model=student,
@@ -45,19 +44,20 @@ def main():
                                           epochs=EPOCHS,
                                           alpha=ALPHA,
                                           T=TEMPERATURE)
+    
     lr_monitor = LearningRateMonitor(logging_interval='step',
                                      log_momentum=False)
     model_checkpoint = ModelCheckpoint(
-                                       dirpath=rf'C:/Users/david/Desktop/test',
-                                       #dirpath=rf'C:/Users/david/Desktop/Python/master/statistics/{kd_model.name}_Adam',
-                                       filename="{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}", 
+                                       #dirpath=rf'C:/Users/david/Desktop/test',
+                                       dirpath=rf'C:/Users/david/Desktop/Python/master/statistics/{kd_model.name}',
+                                       filename="{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}", #+ f'version={kd_model.get_version_number()}', 
                                        save_top_k=1,
                                        save_weights_only=False,
                                        monitor="validation_loss",
                                        mode='min')
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precision='bf16-mixed')
-    ckpt_path = 'C:/Users/david/Desktop/test/epoch=61_validation_loss=2.7033_validation_accuracy=0.96_validation_mcc=0.93.ckpt'
-    trainer.fit(model=kd_model,datamodule=datamodule,ckpt_path=ckpt_path)
+    #ckpt_path = 'C:/Users/david/Desktop/test/epoch=303_validation_loss=0.4812_validation_accuracy=0.99_validation_mcc=0.97.ckpt'
+    trainer.fit(model=kd_model,datamodule=datamodule)#,ckpt_path=ckpt_path)
 
 if __name__ == '__main__':
     main()

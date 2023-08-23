@@ -36,7 +36,6 @@ def main():
                                 collate_fn=collate_fn,
                                 num_workers=NUM_WORKERS)
     print(f'Using {CHECKPOINT_PATH} as our checkpoint for the fine-tuning')
-
     #START FINE-TUNING
     model = EfficientNet_V2_L_Pretrained.load_from_checkpoint(checkpoint_path=CHECKPOINT_PATH,
                                                               strict=False,

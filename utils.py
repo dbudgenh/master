@@ -1,5 +1,6 @@
 import torch
 from typing import List, Optional, Tuple
+import os
 
 
 #https://github.com/pytorch/vision/blob/main/references/classification/utils.py
@@ -63,3 +64,18 @@ def set_weight_decay(
         if len(params[key]) > 0:
             param_groups.append({"params": params[key], "weight_decay": params_weight_decay[key]})
     return param_groups
+
+def find_largest_version_number(folder_path):
+    max_version = -1
+    # Iterate through all subdirectories in the given folder
+    for subdir in os.listdir(folder_path):
+        if os.path.isdir(os.path.join(folder_path, subdir)):
+            try:
+                version_number = int(subdir.split('_')[1])
+                max_version = max(max_version, version_number)
+            except IndexError:
+                pass
+            except ValueError:
+                pass
+            
+    return max_version + 1

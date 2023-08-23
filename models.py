@@ -31,7 +31,6 @@ class ImageClassifierBase(ABC,pl.LightningModule):
                  lr_warmup_decay=0.01,
                  ):
         super().__init__()
-        self.save_hyperparameters()
         self.lr = lr
         self.momentum = momentum
         self.weight_decay = weight_decay
@@ -43,11 +42,17 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.epochs = epochs
         self.lr_warmup_decay = lr_warmup_decay
         self.norm_weight_decay = norm_weight_decay
+        self.save_hyperparameters()
         self.accuracy = Accuracy(task="multiclass", num_classes=NUM_CLASSES)
         self.mcc = MatthewsCorrCoef(task="multiclass",num_classes=NUM_CLASSES)
         self.criterion = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
         self.wrong_classifications = []
 
+    def get_version_number(self):
+        return self.logger.version
+    def get_version_number_v2(self):
+        items = super().get_progress_bar_dict()
+        return items['v_num']
     def _print_parameters(self):
         print(f''' Model was configured with the following parameters:
         lr={self.lr}
@@ -133,7 +138,18 @@ class ImageClassifierBase(ABC,pl.LightningModule):
     
 
 class EfficientNetPretrainedBase(ImageClassifierBase,ABC):
-    def __init__(self,lr,weight_decay,momentum,batch_size,epochs,norm_weight_decay=0.0,label_smoothing=0.1,training_mode='pre_train'):
+    def __init__(self,
+                 lr,
+                 weight_decay,
+                 momentum,
+                 batch_size,
+                 epochs,
+                 norm_weight_decay=0.0,
+                 label_smoothing=0.1,
+                 training_mode='pre_train',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0):
         super().__init__(lr=lr,
                         batch_size=batch_size,
                         momentum=momentum,
@@ -142,9 +158,9 @@ class EfficientNetPretrainedBase(ImageClassifierBase,ABC):
                          norm_weight_decay=norm_weight_decay,
                          label_smoothing=label_smoothing,
                          lr_scheduler='cosineannealinglr' if training_mode == 'pre_train' else 'reducelronplateu',
-                         lr_warmup_epochs=0,
-                         lr_warmup_method='linear',
-                         lr_warmup_decay=0)
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay)
         self.training_mode = training_mode
         self.efficient_net = self.init_base_model()
         print(f"\ttraining_mode={self.training_mode}")
@@ -158,14 +174,35 @@ class EfficientNetPretrainedBase(ImageClassifierBase,ABC):
         pass
 
     def configure_optimizers(self) -> Any:
+        parameters = utils.set_weight_decay(
+            self,
+            self.weight_decay,
+            self.norm_weight_decay,
+            None
+        )
         if self.training_mode == 'pre_train':
-            optimizer = SGD(self.parameters,lr=self.lr,momentum=self.momentum,weight_decay=self.weight_decay)
+            optimizer = SGD(parameters,lr=self.lr,momentum=self.momentum,weight_decay=self.weight_decay)
             scheduler = ReduceLROnPlateau(optimizer,mode='min',factor=0.2,patience=4)
             return [optimizer],[{"scheduler": scheduler,'monitor':'validation_loss'}]
         if self.training_mode == 'fine_tune':
-            optimizer = SGD(self.parameters(),lr=self.lr,weight_decay=self.weight_decay)
-            scheduler = CosineAnnealingWarmRestarts(optimizer,T_0=2500,T_mult=1,verbose=False)
-            return [optimizer],[{"scheduler": scheduler,'interval':'step'}]    
+            optimizer = SGD(parameters,lr=self.lr,momentum=self.momentum,weight_decay=self.weight_decay)
+            if self.lr_scheduler == 'cosineannealinglr':
+                scheduler = CosineAnnealingLR(optimizer, T_max=self.epochs - self.lr_warmup_epochs)
+            else:
+                raise RuntimeError(
+                    f"Invalid lr scheduler '{self.lr_scheduler}'. Only cosineannealinglr is supported."
+                )
+            if self.lr_warmup_epochs > 0:
+                if self.lr_warmup_method == 'linear':
+                    warmup_lr_scheduler = LinearLR(optimizer, start_factor=self.lr_warmup_decay, total_iters=self.lr_warmup_epochs)
+                else:
+                    raise RuntimeError(
+                    f"Invalid lr warmup method '{self.lr_warmup_method}'. Only linear is supported."
+                )
+                lr_scheduler = SequentialLR(optimizer,schedulers=[warmup_lr_scheduler,scheduler],milestones=[self.lr_warmup_epochs])
+            else :
+                lr_scheduler = scheduler
+            return [optimizer],[{"scheduler": lr_scheduler,'interval':'epoch'}] 
     def forward(self,x):
         out = self.efficient_net(x)
         return out
@@ -191,7 +228,6 @@ class KnowledgeDistillationModule(pl.LightningModule):
                  alpha=0.95,
                  T=3.5):
         super().__init__()
-        self.save_hyperparameters(ignore=['student_model','teacher_model'])
         self.student_model = student_model
         self.teacher_model = teacher_model
         #gradient computation not needed for teacher model!
@@ -209,6 +245,7 @@ class KnowledgeDistillationModule(pl.LightningModule):
         self.alpha = alpha
         self.T = T
         self.name = f'{self.student_model.name}_{self.teacher_model.name}_alpha={self.alpha}_T={self.T}'
+        self.save_hyperparameters(ignore=['student_model','teacher_model'])
         self.accuracy = Accuracy(task="multiclass", num_classes=NUM_CLASSES)
         self.mcc = MatthewsCorrCoef(task="multiclass",num_classes=NUM_CLASSES)
 
@@ -457,13 +494,29 @@ class EfficientNet_V2_L(ImageClassifierBase):
         for param in self.efficient_net.parameters():
             param.requires_grad = False
 class EfficientNet_V2_L_Pretrained(EfficientNetPretrainedBase):
-    def __init__(self,lr,weight_decay,momentum,batch_size,epochs,training_mode='pre_train'):
+    def __init__(self,
+                 lr,
+                 weight_decay,
+                 momentum,
+                 batch_size,
+                 epochs,
+                 training_mode='pre_train',
+                 norm_weight_decay=0.0,
+                 label_smoothing=0.1,
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0):
         super().__init__(lr=lr,
                          weight_decay=weight_decay,
                          batch_size=batch_size,
                          momentum=momentum,
                          epochs=epochs,
-                         training_mode=training_mode)
+                         training_mode=training_mode,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay)
         self.name = "EfficientNet_V2_L_Pretrained"
     
     def init_base_model(self):

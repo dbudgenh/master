@@ -36,27 +36,31 @@ class BirdDataset(Dataset):
     STD = (0.2394, 0.2332, 0.2547)
 
     def __init__(self,root_dir,csv_file,transform=None,split=None) -> None:
-        self.bird_frame = pd.read_csv(csv_file,delimiter=',')
+        bird_frame = pd.read_csv(csv_file,delimiter=',')
         if split:
             if split == Split.TRAIN:
-                self.bird_frame = self.bird_frame[self.bird_frame['data set'] == 'train']
+                bird_frame = bird_frame[bird_frame['data set'] == 'train']
             if split == Split.TEST:
-                self.bird_frame = self.bird_frame[self.bird_frame['data set'] == 'test']
+                bird_frame = bird_frame[bird_frame['data set'] == 'test']
             if split == Split.VALID:
-                self.bird_frame = self.bird_frame[self.bird_frame['data set'] == 'valid']
+                bird_frame = bird_frame[bird_frame['data set'] == 'valid']
+        self.class_id = torch.tensor(bird_frame['class id'].tolist())
+        self.base_path =np.array(bird_frame['filepaths'].tolist()).astype(np.string_)
         self.root_dir = root_dir
         self.transform = transform
+        del bird_frame
 
     def __len__(self) -> int:
-        return len(self.bird_frame)
+        assert len(self.class_id) == len(self.base_path)
+        return len(self.class_id)
 
     
     def __getitem__(self, idx):
-        class_id =  int(self.bird_frame.iloc[idx,0])
-        base_path = self.bird_frame.iloc[idx,1]
+        class_id =  int(self.class_id[idx])
+        base_path = str(self.base_path[idx],encoding='utf-8')
         img_path = os.path.join(self.root_dir,base_path)
         #label = self.bird_frame.iloc[idx,2]
-        dataset = self.bird_frame.iloc[idx,3]
+        #dataset = self.bird_frame.iloc[idx,3]
         #scientific_name = self.bird_frame.iloc[idx,4]
         image = default_loader(img_path) #read_image(img_path) #output has shape (3,224,224)
         if self.transform:
@@ -132,32 +136,40 @@ class BaseDataModule(ABC,pl.LightningDataModule):
                           shuffle=True, 
                           num_workers=self.num_workers,
                           collate_fn=self.collate_fn,
-                          pin_memory=True,
-                          persistent_workers=False)
+                          pin_memory=False,
+                          #generator=torch.Generator(device='cuda'),
+                          #persistent_workers=False if self.num_workers == 0 else True
+                          )
     
     def val_dataloader(self):
         return DataLoader(dataset=self.validation_data, 
                           batch_size=self.batch_size, 
                           shuffle=False, 
                           num_workers=self.num_workers,
-                          pin_memory=True,
-                          persistent_workers=False)
+                          pin_memory=False,
+                          #generator=torch.Generator(device='cuda'),
+                          #persistent_workers=False if self.num_workers == 0 else True
+                          )
     
     def test_dataloader(self):
         return DataLoader(dataset=self.testing_data, 
                           batch_size=self.batch_size,
                           shuffle=False,
                           num_workers=self.num_workers,
-                          pin_memory=True,
-                          persistent_workers=False)
+                          pin_memory=False,
+                          #generator=torch.Generator(device='cuda'),
+                          #persistent_workers=False if self.num_workers == 0 else True
+                          )
     
     def predict_dataloader(self):
         return DataLoader(dataset=self.predicting_data, 
                           batch_size=self.batch_size,
                           shuffle=False, 
                           num_workers=self.num_workers,
-                          pin_memory=True,
-                          persistent_workers=False)
+                          pin_memory=False,
+                          #generator=torch.Generator(device='cuda'),
+                          #persistent_workers=False if self.num_workers == 0 else True
+                          )
 
 class BirdDataNPZModule(BaseDataModule):
     def __init__(self,train_npz_path,valid_npz_path,test_npz_path,train_transform,valid_transform,batch_size=32,num_workers=2,collate_fn=None):
@@ -190,7 +202,6 @@ class BirdDataModule(BaseDataModule):
         super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers,collate_fn=collate_fn)
         self.root_dir = root_dir
         self.csv_file = csv_file
-        self.bird_frame = pd.read_csv(self.csv_file,delimiter=',')
 
     def train_data(self):
         return BirdDataset(root_dir=self.root_dir,csv_file=self.csv_file,transform=self.train_transform,split=Split.TRAIN)
