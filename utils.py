@@ -105,5 +105,4 @@ def get_confusion_matrix_figure(computed_confusion):
     plt.figure(figsize=(10,8))
     fig = sns.heatmap(df_cm,annot=True,cmap='Spectral').get_figure()
     plt.close(fig)
-
     return fig

@@ -71,6 +71,7 @@ def main():
     trainer.fit(model=model,datamodule=datamodule,ckpt_path=CHECKPOINT_PATH)
 
 
+
     
 
     

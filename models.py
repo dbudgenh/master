@@ -8,7 +8,7 @@ from torchvision.models import resnet18,resnet101
 from torchvision.models import vit_b_16,ViT_B_16_Weights
 import pytorch_lightning as pl
 import torch.optim as optim
-from torchmetrics import Accuracy,F1Score,MatthewsCorrCoef,ConfusionMatrix,ROC
+from torchmetrics import Accuracy,F1Score,MatthewsCorrCoef,ConfusionMatrix,ROC,AUROC
 from lion_pytorch import Lion
 from abc import ABC,abstractmethod
 from torch.optim import AdamW,SGD
@@ -16,8 +16,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR,CosineAnnealingWarmRestar
 from knowledge_distillation import knowledge_distillation_loss
 import utils
 from pytorch_lightning.loggers.tensorboard import TensorBoardLogger
-
-import matplotlib.pyplot as plt
+from sklearn.metrics import classification_report
 
 
 NUM_CLASSES = 525
@@ -57,6 +56,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.criterion = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
         self.confusion_matrix = ConfusionMatrix(task="multiclass",num_classes=NUM_CLASSES)
         self.roc_curve = ROC(task='multiclass',num_classes=NUM_CLASSES)
+        self.auroc = AUROC(task='multiclass',num_classes=NUM_CLASSES)
         
         #self.logger:TensorBoardLogger = TensorBoardLogger(save_dir=':/',log_graph=True)
         self.test_step_prediction = []
@@ -130,9 +130,9 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.logger.experiment.add_scalars('loss',{'train':loss},global_step=self.global_step)
         self.logger.experiment.add_scalars('accuracy',{'train':accuracy},global_step=self.global_step)
         self.logger.experiment.add_scalars('mcc',{'train':mcc},global_step=self.global_step)
-        self.log("train_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("train_loss",loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("train_mcc",mcc,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("train_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
+        self.log("train_loss",loss,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
+        self.log("train_mcc",mcc,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         return loss
     
 
@@ -147,9 +147,9 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.logger.experiment.add_scalars('loss',{'validation':loss},global_step=self.global_step)
         self.logger.experiment.add_scalars('accuracy',{'validation':accuracy},global_step=self.global_step)
         self.logger.experiment.add_scalars('mcc',{'validation':mcc},global_step=self.global_step)
-        self.log("validation_accuracy",accuracy,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("validation_loss",loss,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("validation_mcc",mcc,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("validation_accuracy",accuracy,prog_bar=True,batch_size=self.batch_size)
+        self.log("validation_loss",loss,prog_bar=True,batch_size=self.batch_size)
+        self.log("validation_mcc",mcc,prog_bar=True,batch_size=self.batch_size)
         
         return loss
 
@@ -166,9 +166,9 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.logger.experiment.add_scalars('loss',{'test':loss},global_step=self.global_step)
         self.logger.experiment.add_scalars('accuracy',{'test':accuracy},global_step=self.global_step)
         self.logger.experiment.add_scalars('mcc',{'test':mcc},global_step=self.global_step)
-        self.log("test_accuracy",accuracy,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("test_loss",loss,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("test_mcc",mcc,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("test_accuracy",accuracy,prog_bar=True,batch_size=self.batch_size)
+        self.log("test_loss",loss,prog_bar=True,batch_size=self.batch_size)
+        self.log("test_mcc",mcc,prog_bar=True,batch_size=self.batch_size)
 
         self.test_step_prediction.append(output)
         self.test_step_label.append(labels)
@@ -188,6 +188,14 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         fpr, tpr, thresholds = self.roc_curve(all_predictions,all_labels)
         fig = utils.get_roc_curve_figure(fpr=fpr,tpr=tpr,thresholds=thresholds)
         self.logger.experiment.add_figure('ROC curve',fig,self.current_epoch)
+
+        #Create AUROC
+        auroc = self.auroc(all_predictions,all_labels)
+        self.log('Area under ROC',auroc,batch_size=self.batch_size)
+
+        #Create classification report
+        report = classification_report(all_labels,all_predictions)
+        self.logger.experiment.add_text('Classification report',report)
 
         #Clear values
         self.test_step_prediction.clear()

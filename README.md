@@ -120,8 +120,5 @@ colab : 2.01it/s batch_size = 128 (total 662it) -> Pro epoch 5.5minuten
 
 # Logging
 
-- Confusion matrix
 - Grad-cam
-- F1-score/Recall/Sensitivity
-- ROC-Curve
-- ...
+- Integrated gradients

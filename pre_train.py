@@ -32,7 +32,7 @@ def main():
                                 collate_fn=collate_fn,
                                 num_workers=NUM_WORKERS)
     #START PRE-TRAINING
-    model = EfficientNet_V2_L_Pretrained(lr=LEARNING_RATE_PRE_TRAIN,
+    model = EfficientNet_V2_M_Pretrained(lr=LEARNING_RATE_PRE_TRAIN,
                                          weight_decay=WEIGHT_DECAY_PRE_TRAIN, 
                                          momentum=MOMENTUM,
                                          batch_size=BATCH_SIZE,
@@ -47,7 +47,6 @@ def main():
                                        monitor="validation_loss",
                                        mode='min')
     trainer = pl.Trainer(max_epochs=EPOCHS_PRE_TRAIN,callbacks=[model_checkpoint,lr_monitor],precision='bf16-mixed')
-    #ckpt_path = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_S_Pretrained_Pretrained_V2_SGD/epoch=27_validation_loss=1.8356_validation_accuracy=0.83_validation_mcc=0.82_version_number=123.ckpt'
     trainer.fit(model=model,datamodule=datamodule)#,#ckpt_path=ckpt_path)
 
 
