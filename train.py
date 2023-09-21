@@ -35,7 +35,7 @@ LABEL_SMOOTHING = 0.1
 
 def main():
     torch.set_float32_matmul_precision('medium')
-    train_transform, valid_transform = old_transforms() #default_transforms()
+    train_transform, valid_transform, version = old_transforms() #default_transforms()
     collate_fn = None #default_collate_fn()
 
     datamodule = BirdDataModule(root_dir='C:/Users/david/Desktop/Python/master/data',
@@ -56,20 +56,20 @@ def main():
                               lr_warmup_epochs=LR_WARMUP_EPOCHS,
                               lr_warmup_method=LR_WARMUP_METHOD,
                               lr_warmup_decay=LR_WARMUP_DECAY,
-                              epochs=EPOCHS)
-
+                              epochs=EPOCHS,
+                              num_workers=NUM_WORKERS,
+                              optimizer_algorithm='sgd')
     lr_monitor = LearningRateMonitor(logging_interval='step',log_momentum=False)
     #+ f"_version={model.logger.version}"
     model_checkpoint = ModelCheckpoint(
-                                       dirpath=rf'C:/Users/david/Desktop/Python/master/statistics/{model.name}_Adam',
-                                       filename="{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}" , 
+                                       filename=f"{model.name}_{version}_"+ "{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}", 
                                        save_top_k=1,
+                                       verbose=True,
                                        monitor="validation_loss",
                                        mode='min')
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precission='bf16-mixed') #
     trainer.fit(model=model,datamodule=datamodule,ckpt_path=CHECKPOINT_PATH)
 
-    #TODO: copy lightning_logs into statistic directory
 
     
 

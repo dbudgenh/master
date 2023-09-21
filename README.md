@@ -117,3 +117,11 @@ colab : 2.01it/s batch_size = 128 (total 662it) -> Pro epoch 5.5minuten
 - alpha different values between [0.1,0.5,0.7,0.9,0.99]
 - T different values between [1,3,5,7,10,20,50,100]
   -Try
+
+# Logging
+
+- Confusion matrix
+- Grad-cam
+- F1-score/Recall/Sensitivity
+- ROC-Curve
+- ...

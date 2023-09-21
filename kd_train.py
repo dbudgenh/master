@@ -21,7 +21,7 @@ NUM_WORKERS = 12
 
 def main():
     torch.set_float32_matmul_precision('medium')
-    train_transform, valid_transform = old_transforms()
+    train_transform, valid_transform,version = old_transforms()
     datamodule = BirdDataModule(root_dir='C:/Users/david/Desktop/Python/master/data',
                                 csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',
                                 train_transform=train_transform,
@@ -43,14 +43,13 @@ def main():
                                           lr_warmup_decay=LR_WARMUP_DECAY,
                                           epochs=EPOCHS,
                                           alpha=ALPHA,
-                                          T=TEMPERATURE)
+                                          T=TEMPERATURE,
+                                          num_workers=NUM_WORKERS)
     
     lr_monitor = LearningRateMonitor(logging_interval='step',
                                      log_momentum=False)
     model_checkpoint = ModelCheckpoint(
-                                       #dirpath=rf'C:/Users/david/Desktop/test',
-                                       dirpath=rf'C:/Users/david/Desktop/Python/master/statistics/{kd_model.name}',
-                                       filename="{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}", #+ f'version={kd_model.get_version_number()}', 
+                                       filename=f"{kd_model.name}_{version}_"+ "{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}",
                                        save_top_k=1,
                                        save_weights_only=False,
                                        monitor="validation_loss",

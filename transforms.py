@@ -23,6 +23,9 @@ def standardize(x):
         return x / 255.0
 
 
+
+
+
 #Recommended transformations for state-of-the-art performance
 def default_transforms(use_npz_dataset=False):
     train_transform = transforms.Compose([
@@ -40,7 +43,7 @@ def default_transforms(use_npz_dataset=False):
         transforms.ToTensor() if not use_npz_dataset else standardize, #Npz dataset is already a tensor, so standardize from 0-255 -> 0-1
         transforms.Normalize(mean=IMAGENET_MEAN,std=IMAGENET_STD)
     ])
-    return train_transform,valid_transform
+    return train_transform,valid_transform,"V2"
 
 #Callable object to bypass pickle error
 class MixupCutMixCollator:
@@ -86,7 +89,7 @@ def old_transforms():
             transforms.ToTensor(), #0-255 -> 0-1
             transforms.Normalize(mean=IMAGENET_MEAN,std=IMAGENET_STD)
     ])
-    return train_transform, valid_transform
+    return train_transform, valid_transform,'V1'
 
 
 import math

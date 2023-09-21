@@ -1,7 +1,9 @@
 import torch
 from typing import List, Optional, Tuple
 import os
-
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 
 #https://github.com/pytorch/vision/blob/main/references/classification/utils.py
 def set_weight_decay(
@@ -79,3 +81,29 @@ def find_largest_version_number(folder_path):
                 pass
             
     return max_version + 1
+
+def get_roc_curve_figure(fpr, tpr, thresholds):
+    plt.figure(figsize=(8, 6))
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, label='No skill', linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate (FPR)')
+    plt.ylabel('True Positive Rate (TPR)')
+    plt.title('Receiver Operating Characteristic (ROC) Curve')
+    plt.legend(loc='lower right')
+    
+    # Annotate ROC curve with thresholds
+    for i, threshold in enumerate(thresholds):
+        plt.annotate(f'{threshold:.2f}', (fpr[i], tpr[i]), textcoords="offset points", xytext=(0, 10), ha='center')
+    result = plt.gcf()
+    plt.close()
+    return result
+
+def get_confusion_matrix_figure(computed_confusion):
+    df_cm = pd.DataFrame(computed_confusion)
+    plt.figure(figsize=(10,8))
+    fig = sns.heatmap(df_cm,annot=True,cmap='Spectral').get_figure()
+    plt.close(fig)
+
+    return fig
