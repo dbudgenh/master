@@ -97,9 +97,9 @@ def get_roc_curve_figure(fpr, tpr, thresholds):
     for i, threshold in enumerate(thresholds):
         plt.annotate(f'{threshold:.2f}', (fpr[i], tpr[i]), textcoords="offset points", xytext=(0, 5), ha='center',fontsize=6)
     result = plt.gcf()
-    #plt.close()
-    #return result
-    plt.show()
+    plt.close()
+    return result
+
 
 def get_confusion_matrix_figure(computed_confusion):
     df_cm = pd.DataFrame(computed_confusion)
