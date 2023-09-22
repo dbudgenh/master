@@ -4,6 +4,7 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+import numpy as np
 
 #https://github.com/pytorch/vision/blob/main/references/classification/utils.py
 def set_weight_decay(
@@ -84,21 +85,21 @@ def find_largest_version_number(folder_path):
 
 def get_roc_curve_figure(fpr, tpr, thresholds):
     plt.figure(figsize=(8, 6))
-    plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve')
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve', marker='o',markersize=3)
     plt.plot([0, 1], [0, 1], color='navy', lw=2, label='No skill', linestyle='--')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
+    plt.xlim([-0.05, 1.05])
+    plt.ylim([-0.05, 1.05])
     plt.xlabel('False Positive Rate (FPR)')
     plt.ylabel('True Positive Rate (TPR)')
     plt.title('Receiver Operating Characteristic (ROC) Curve')
     plt.legend(loc='lower right')
-    
     # Annotate ROC curve with thresholds
     for i, threshold in enumerate(thresholds):
-        plt.annotate(f'{threshold:.2f}', (fpr[i], tpr[i]), textcoords="offset points", xytext=(0, 10), ha='center')
+        plt.annotate(f'{threshold:.2f}', (fpr[i], tpr[i]), textcoords="offset points", xytext=(0, 5), ha='center',fontsize=6)
     result = plt.gcf()
-    plt.close()
-    return result
+    #plt.close()
+    #return result
+    plt.show()
 
 def get_confusion_matrix_figure(computed_confusion):
     df_cm = pd.DataFrame(computed_confusion)
@@ -106,3 +107,17 @@ def get_confusion_matrix_figure(computed_confusion):
     fig = sns.heatmap(df_cm,annot=True,cmap='Spectral').get_figure()
     plt.close(fig)
     return fig
+
+def main():
+
+    fpr = np.array([0.0, 0.0, 0.0, 0.0, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+    tpr = np.array([0.0, 0.3, 0.5, 0.8, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 1.0])
+    thresholds = np.array([0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.0])
+
+
+    # Calculate TPR and FPR for each threshold
+    get_roc_curve_figure(fpr=fpr,tpr=tpr,thresholds=thresholds)
+    print()
+
+if __name__ =='__main__':
+    main()

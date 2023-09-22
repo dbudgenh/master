@@ -147,6 +147,8 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.logger.experiment.add_scalars('loss',{'validation':loss},global_step=self.global_step)
         self.logger.experiment.add_scalars('accuracy',{'validation':accuracy},global_step=self.global_step)
         self.logger.experiment.add_scalars('mcc',{'validation':mcc},global_step=self.global_step)
+
+
         self.log("validation_accuracy",accuracy,prog_bar=True,batch_size=self.batch_size)
         self.log("validation_loss",loss,prog_bar=True,batch_size=self.batch_size)
         self.log("validation_mcc",mcc,prog_bar=True,batch_size=self.batch_size)
@@ -163,9 +165,6 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         mcc = self.mcc(output,labels)
 
         #predictions = torch.argmax(output,dim=1)
-        self.logger.experiment.add_scalars('loss',{'test':loss},global_step=self.global_step)
-        self.logger.experiment.add_scalars('accuracy',{'test':accuracy},global_step=self.global_step)
-        self.logger.experiment.add_scalars('mcc',{'test':mcc},global_step=self.global_step)
         self.log("test_accuracy",accuracy,prog_bar=True,batch_size=self.batch_size)
         self.log("test_loss",loss,prog_bar=True,batch_size=self.batch_size)
         self.log("test_mcc",mcc,prog_bar=True,batch_size=self.batch_size)
@@ -186,15 +185,17 @@ class ImageClassifierBase(ABC,pl.LightningModule):
 
         #Create ROC-Curve
         fpr, tpr, thresholds = self.roc_curve(all_predictions,all_labels)
-        fig = utils.get_roc_curve_figure(fpr=fpr,tpr=tpr,thresholds=thresholds)
-        self.logger.experiment.add_figure('ROC curve',fig,self.current_epoch)
+        #For each class, create a seperate roc-curve
+        for i in range(NUM_CLASSES):
+            fig = utils.get_roc_curve_figure(fpr=fpr[i],tpr=tpr[i],thresholds=thresholds[i])
+            self.logger.experiment.add_figure(f'ROC curve for class {i}',fig,self.current_epoch)
 
         #Create AUROC
         auroc = self.auroc(all_predictions,all_labels)
         self.log('Area under ROC',auroc,batch_size=self.batch_size)
 
         #Create classification report
-        report = classification_report(all_labels,all_predictions)
+        report = classification_report(all_labels.cpu(),all_predictions.cpu())
         self.logger.experiment.add_text('Classification report',report)
 
         #Clear values

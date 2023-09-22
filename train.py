@@ -69,6 +69,7 @@ def main():
                                        mode='min')
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precission='bf16-mixed') #
     trainer.fit(model=model,datamodule=datamodule,ckpt_path=CHECKPOINT_PATH)
+    #trainer.test(model=model,datamodule=datamodule,ckpt_path=)
 
 
 
