@@ -106,7 +106,7 @@ def get_confusion_matrix_figure(computed_confusion):
     plt.figure(figsize=(40,40))
 
     #colors from white to blue
-    cmap = sns.color_palette("light:#0012ff", as_cmap=True)
+    cmap = sns.color_palette("light:#Ff4100", as_cmap=True)
 
     fig = sns.heatmap(df_cm,annot=True,cmap=cmap,annot_kws={'fontsize':3}).get_figure()
     plt.show()
@@ -114,27 +114,7 @@ def get_confusion_matrix_figure(computed_confusion):
     return fig
 
 def main():
-
-    import seaborn as sns
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    # Generate example data
-    data = np.random.randint(0, 100, (10, 10))  # Random data for demonstration
-
-    # Define a custom color map (colormap) #0012ff
-    cmap = sns.color_palette("light:#Ff4100", as_cmap=True)
-
-    # Create the heatmap with the custom colormap
-    ax = sns.heatmap(data, cmap=cmap)
-
-    # Add labels and title
-    plt.xlabel('X-axis')
-    plt.ylabel('Y-axis')
-    plt.title('Custom Colormap Heatmap')
-
-    # Show the heatmap
-    plt.show()
+    pass
 
 if __name__ =='__main__':
     main()
