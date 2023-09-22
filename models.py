@@ -17,7 +17,7 @@ from knowledge_distillation import knowledge_distillation_loss
 import utils
 from pytorch_lightning.loggers.tensorboard import TensorBoardLogger
 from sklearn.metrics import classification_report
-
+from tqdm import tqdm
 
 NUM_CLASSES = 525
 class ImageClassifierBase(ABC,pl.LightningModule):
@@ -178,6 +178,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         all_labels = torch.cat(self.test_step_label)
 
         #Create the confusion matrix
+        print('Computing confusion matrix...')
         self.confusion_matrix(all_predictions,all_labels)
         computed_confusion = self.confusion_matrix.compute().detach().cpu().numpy().astype(int)
         fig = utils.get_confusion_matrix_figure(computed_confusion=computed_confusion)
@@ -186,16 +187,18 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         #Create ROC-Curve
         fpr, tpr, thresholds = self.roc_curve(all_predictions,all_labels)
         #For each class, create a seperate roc-curve
-        for i in range(NUM_CLASSES):
+        for i in tqdm(range(NUM_CLASSES),desc=f"ROC curve"):
             fig = utils.get_roc_curve_figure(fpr=fpr[i],tpr=tpr[i],thresholds=thresholds[i])
             self.logger.experiment.add_figure(f'ROC curve for class {i}',fig,self.current_epoch)
 
         #Create AUROC
+        print('Computing Area under ROC')
         auroc = self.auroc(all_predictions,all_labels)
         self.log('Area under ROC',auroc,batch_size=self.batch_size)
 
         #Create classification report
-        report = classification_report(all_labels.cpu(),all_predictions.cpu())
+        print('Computing classification report')
+        report = classification_report(all_labels.cpu(),torch.argmax(all_predictions,dim=1).cpu())
         self.logger.experiment.add_text('Classification report',report)
 
         #Clear values
