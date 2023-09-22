@@ -103,21 +103,38 @@ def get_roc_curve_figure(fpr, tpr, thresholds):
 
 def get_confusion_matrix_figure(computed_confusion):
     df_cm = pd.DataFrame(computed_confusion)
-    plt.figure(figsize=(10,8))
-    fig = sns.heatmap(df_cm,annot=True,cmap='Spectral').get_figure()
+    plt.figure(figsize=(40,40))
+
+    #colors from white to blue
+    cmap = sns.color_palette("light:#0012ff", as_cmap=True)
+
+    fig = sns.heatmap(df_cm,annot=True,cmap=cmap,annot_kws={'fontsize':3}).get_figure()
+    plt.show()
     plt.close(fig)
     return fig
 
 def main():
 
-    fpr = np.array([0.0, 0.0, 0.0, 0.0, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-    tpr = np.array([0.0, 0.3, 0.5, 0.8, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 1.0])
-    thresholds = np.array([0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.0])
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    import numpy as np
 
+    # Generate example data
+    data = np.random.randint(0, 100, (10, 10))  # Random data for demonstration
 
-    # Calculate TPR and FPR for each threshold
-    get_roc_curve_figure(fpr=fpr,tpr=tpr,thresholds=thresholds)
-    print()
+    # Define a custom color map (colormap) #0012ff
+    cmap = sns.color_palette("light:#Ff4100", as_cmap=True)
+
+    # Create the heatmap with the custom colormap
+    ax = sns.heatmap(data, cmap=cmap)
+
+    # Add labels and title
+    plt.xlabel('X-axis')
+    plt.ylabel('Y-axis')
+    plt.title('Custom Colormap Heatmap')
+
+    # Show the heatmap
+    plt.show()
 
 if __name__ =='__main__':
     main()

@@ -67,7 +67,7 @@ def main():
                                        verbose=True,
                                        monitor="validation_loss",
                                        mode='min')
-    trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precission='bf16-mixed') #
+    trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precision='bf16-mixed') #
     trainer.fit(model=model,datamodule=datamodule,ckpt_path=CHECKPOINT_PATH)
     #trainer.test(model=model,datamodule=datamodule,ckpt_path=)
 
