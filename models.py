@@ -188,7 +188,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         fpr, tpr, thresholds = self.roc_curve(all_predictions,all_labels)
         #For each class, create a seperate roc-curve
         for i in tqdm(range(NUM_CLASSES),desc=f"ROC curve"):
-            fig = utils.get_roc_curve_figure(fpr=fpr[i],tpr=tpr[i],thresholds=thresholds[i])
+            fig = utils.get_roc_curve_figure(fpr=fpr[i],tpr=tpr[i],thresholds=thresholds[i],class_name=str(i))
             self.logger.experiment.add_figure(f'ROC curve for class {i}',fig,self.current_epoch)
 
         #Create AUROC
@@ -200,6 +200,11 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         print('Computing classification report')
         report = classification_report(all_labels.cpu(),torch.argmax(all_predictions,dim=1).cpu())
         self.logger.experiment.add_text('Classification report',report)
+
+        #Gradcam
+
+        #Integrated gradients
+
 
         #Clear values
         self.test_step_prediction.clear()

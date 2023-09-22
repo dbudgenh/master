@@ -83,15 +83,15 @@ def find_largest_version_number(folder_path):
             
     return max_version + 1
 
-def get_roc_curve_figure(fpr, tpr, thresholds):
-    plt.figure(figsize=(8, 6))
+def get_roc_curve_figure(fpr, tpr, thresholds,class_name):
+    plt.figure(figsize=(20, 20))
     plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve', marker='o',markersize=3)
     plt.plot([0, 1], [0, 1], color='navy', lw=2, label='No skill', linestyle='--')
     plt.xlim([-0.05, 1.05])
     plt.ylim([-0.05, 1.05])
     plt.xlabel('False Positive Rate (FPR)')
     plt.ylabel('True Positive Rate (TPR)')
-    plt.title('Receiver Operating Characteristic (ROC) Curve')
+    plt.title(f'Receiver Operating Characteristic (ROC) Curve for class {class_name}')
     plt.legend(loc='lower right')
     # Annotate ROC curve with thresholds
     for i, threshold in enumerate(thresholds):
@@ -103,7 +103,7 @@ def get_roc_curve_figure(fpr, tpr, thresholds):
 
 def get_confusion_matrix_figure(computed_confusion):
     df_cm = pd.DataFrame(computed_confusion)
-    plt.figure(figsize=(40,40))
+    plt.figure(figsize=(20,20))
 
     #colors from white to blue
     cmap = sns.color_palette("light:#Ff4100", as_cmap=True)
