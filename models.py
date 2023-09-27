@@ -179,16 +179,15 @@ class ImageClassifierBase(ABC,pl.LightningModule):
 
         #Create the confusion matrix
         print('Computing confusion matrix...')
-        self.confusion_matrix(all_predictions,all_labels)
-        computed_confusion = self.confusion_matrix.compute().detach().cpu().numpy().astype(int)
-        fig = utils.get_confusion_matrix_figure(computed_confusion=computed_confusion)
+        computed_confusion = self.confusion_matrix(all_predictions,all_labels)
+        fig = utils.get_confusion_matrix_figure(computed_confusion=computed_confusion.cpu().numpy().astype(int))
         self.logger.experiment.add_figure('Confusion matrix',fig,self.current_epoch)
 
         #Create ROC-Curve
         fpr, tpr, thresholds = self.roc_curve(all_predictions,all_labels)
         #For each class, create a seperate roc-curve
-        for i in tqdm(range(NUM_CLASSES),desc=f"ROC curve"):
-            fig = utils.get_roc_curve_figure(fpr=fpr[i],tpr=tpr[i],thresholds=thresholds[i],class_name=str(i))
+        for i in tqdm(range(NUM_CLASSES),desc="ROC curve"):
+            fig = utils.get_roc_curve_figure(fpr=fpr[i],tpr=tpr[i],thresholds=thresholds[i])
             self.logger.experiment.add_figure(f'ROC curve for class {i}',fig,self.current_epoch)
 
         #Create AUROC
