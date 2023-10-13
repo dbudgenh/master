@@ -46,5 +46,6 @@ def main():
         show_multiple_images(images=[rgb_image,image_cam,visualization],titles=['Original','Heat map', 'Combined'])
 
 
+
 if __name__ == '__main__':
     main()

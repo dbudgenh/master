@@ -18,6 +18,7 @@ import utils
 from pytorch_lightning.loggers.tensorboard import TensorBoardLogger
 from sklearn.metrics import classification_report
 from tqdm import tqdm
+from transforms import denormalize
 
 NUM_CLASSES = 525
 class ImageClassifierBase(ABC,pl.LightningModule):
@@ -61,6 +62,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         #self.logger:TensorBoardLogger = TensorBoardLogger(save_dir=':/',log_graph=True)
         self.test_step_prediction = []
         self.test_step_label = []
+        self.test_step_input = []
 
     def _print_parameters(self):
         print(f''' Model was configured with the following parameters:
@@ -171,12 +173,26 @@ class ImageClassifierBase(ABC,pl.LightningModule):
 
         self.test_step_prediction.append(output)
         self.test_step_label.append(labels)
+        self.test_step_input.append(inputs)
+
+
         return loss
     
     def on_test_epoch_end(self) -> None:
-        all_predictions = torch.cat(self.test_step_prediction)
-        all_labels = torch.cat(self.test_step_label)
+        all_predictions = torch.cat(self.test_step_prediction) #(2625,525)
+        all_labels = torch.cat(self.test_step_label) # (2625)
+        all_images = torch.cat(self.test_step_input) # (2625,3,224,224)
 
+
+
+
+        all_predictions_probabilities = torch.softmax(all_predictions,dim=1)
+        all_predictions_max_probabilities = torch.max(all_predictions,dim=1)
+        top_k_propabilities = torch.topk(all_predictions_max_probabilities.values,10)
+        bottom_k_propabilities = torch.topk(all_predictions_max_probabilities.values,10,largest=False)
+        all_predictions_idx = torch.argmax(all_predictions,dim=1)
+
+         
         #Create the confusion matrix
         print('Computing confusion matrix...')
         computed_confusion = self.confusion_matrix(all_predictions,all_labels)
@@ -200,14 +216,21 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         report = classification_report(all_labels.cpu(),torch.argmax(all_predictions,dim=1).cpu())
         self.logger.experiment.add_text('Classification report',report)
 
+
+        #Top 10 predictions
+        
+        #Worst 10 predictions
+
         #Gradcam
 
         #Integrated gradients
 
 
+
         #Clear values
         self.test_step_prediction.clear()
         self.test_step_label.clear()
+        self.test_step_input.clear()
 
 class EfficientNetPretrainedBase(ImageClassifierBase,ABC):
     def __init__(self,

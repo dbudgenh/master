@@ -20,9 +20,19 @@ IMAGENET_MEAN =(0.485, 0.456, 0.406)
 IMAGENET_STD =(0.229, 0.224, 0.225)
 
 def standardize(x):
-        return x / 255.0
+    return x / 255.0
 
-
+def denormalize(z,mu,std):
+    denorm = transforms.Compose(
+        [
+        transforms.Normalize(
+        mean=[-m / s for m, s in zip(mu, std)],
+        std=[1.0 / s for s in std],
+        ),
+        transforms.ConvertImageDtype(dtype=torch.uint8)
+        ]
+    )
+    return denorm(z)
 
 
 

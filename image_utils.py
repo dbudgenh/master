@@ -2,7 +2,7 @@ from skimage import io
 from matplotlib import pyplot as plt
 import numpy as np
 
-def show_image_from_array(image_array,title) -> None:
+def show_image_from_array(image_array,title='') -> None:
     """Show an image in matplotlib
 
     Args:
@@ -12,10 +12,8 @@ def show_image_from_array(image_array,title) -> None:
     io.imshow(image_array)
     plt.show()
 
-def show_image_from_tensor(tensor,title) -> None:
-    plt.title(title)
-    io.imshow(np.array(tensor.permute(1,2,0)))
-    plt.show()
+def show_image_from_tensor(tensor,title='') -> None:
+    show_image_from_array(np.array(tensor.permute(1,2,0)),title)
 
 def show_image_from_path(path,title) -> None:
     image_array = io.imread(path)
