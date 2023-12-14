@@ -20,6 +20,8 @@ All documents and code used for the master thesis are stored here
 1.  **Bird Dataset**
     This dataset consists of 525 bird species. 84635 training images, 2625 test images(5 images per species) and 2625 validation images (5 images per species). For further information, see [here](https://www.kaggle.com/datasets/gpiosenka/100-bird-species)
 
+    !! The class "Looney Birds" (id=326) are incorrect. They consists of human faces.
+
 ### Checklist
 
 - [x] Load bird data
@@ -102,23 +104,18 @@ colab : 2.01it/s batch_size = 128 (total 662it) -> Pro epoch 5.5minuten
 
 -What techniques used for multi teacher
 -Technique about weighting the different teachers
--Other XAI technique
 -Compare methods to other thesis
 -Visualization metrics ()
--Make the experiments similar between thesis
 
 -KD between best student and best teacher
 -XAI between best student KD and without KD
 -Do different KD-techniques
 -Compare different implementation families (Resnet vs efficientnet vs ViT)
-
 -Try standard KD method as presented by [Hinton et al. 2015](https://arxiv.org/abs/1503.02531)
 
 - alpha different values between [0.1,0.5,0.7,0.9,0.99]
 - T different values between [1,3,5,7,10,20,50,100]
-  -Try
 
-# Logging
-
-- Grad-cam
-- Integrated gradients
+- Multi-teacher approach (1 student, many teachers)
+- Feature based-approach
+- Combine response + feature to get relational approach

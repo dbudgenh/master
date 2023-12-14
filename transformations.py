@@ -2,7 +2,6 @@ from torchvision.transforms import transforms,autoaugment,AugMix
 from torchvision.transforms.functional import InterpolationMode
 from torch.utils.data.dataloader import default_collate
 from dataset import BirdDataset
-from models import NUM_CLASSES
 
 IMAGENET_MEAN =(0.485, 0.456, 0.406)
 IMAGENET_STD = std=(0.229, 0.224, 0.225)
@@ -18,6 +17,7 @@ TRAIN_CROP_SIZE = 176
 
 IMAGENET_MEAN =(0.485, 0.456, 0.406)
 IMAGENET_STD =(0.229, 0.224, 0.225)
+NUM_CLASSES = 525
 
 def standardize(x):
     return x / 255.0

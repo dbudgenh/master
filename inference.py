@@ -11,7 +11,8 @@ from image_utils import show_image_from_path
 from bird_mapping import get_mapping
 from browser import search_image_on_google_in_new_tab,close_tab
 from torchvision.transforms.v2 import AugMix
-from transforms import old_transforms
+from transformations import old_transforms
+from utils import get_model
 
 
 'Convert Labels from .csv to ImageFolder'
@@ -25,17 +26,19 @@ checkpoint_path = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_
 #checkpoint_path = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_S_Pretrained_Adam/epoch=61_validation_loss=0.0592_validation_accuracy=0.99_validation_mcc=0.96.ckpt'
 def main():
     torch.set_float32_matmul_precision('medium')
-    train_transform, valid_transform = old_transforms()
+    train_transform, valid_transform, version = old_transforms()
 
     datamodule = BirdDataModule(root_dir='C:/Users/david/Desktop/Python/master/data/',
                                 csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',
                                 train_transform=train_transform,
                                 valid_transform=valid_transform,
-                                batch_size=16,num_workers=2)
+                                batch_size=16,num_workers=2,collate_fn=None)
     
     #MAPPINGS ARE DIFFERENT BETWEEN IMAGEFOLDER AND OUR DATALOADER!!!
-    model = EfficientNet_V2_L.load_from_checkpoint(checkpoint_path=checkpoint_path)
-    mapping = get_mapping(csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv')
+
+    #label_smoothing=0, otherwise test_loss will be very high
+    model = get_model(checkpoint_path=checkpoint_path)
+    #model = EfficientNet_V2_L.load_from_checkpoint(checkpoint_path=checkpoint_path)
     trainer = pl.Trainer()
     trainer.test(model,datamodule=datamodule)
 

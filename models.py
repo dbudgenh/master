@@ -18,9 +18,12 @@ import utils
 from pytorch_lightning.loggers.tensorboard import TensorBoardLogger
 from sklearn.metrics import classification_report
 from tqdm import tqdm
-from transforms import denormalize
+from transformations import denormalize
+from functools import partial
 
-NUM_CLASSES = 525
+NUM_CLASSES = 524
+TOP_K = 10
+
 class ImageClassifierBase(ABC,pl.LightningModule):
     def __init__(self,lr=0.1,
                  batch_size=32,
@@ -34,7 +37,8 @@ class ImageClassifierBase(ABC,pl.LightningModule):
                  lr_warmup_method='linear',
                  lr_warmup_decay=0.01,
                  optimizer_algorithm='sgd',
-                 num_workers=0
+                 num_workers=0,
+                 log_config= None
                  ):
         super().__init__()
         self.lr = lr
@@ -50,7 +54,9 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.epochs = epochs
         self.lr_warmup_decay = lr_warmup_decay
         self.norm_weight_decay = norm_weight_decay
-        self.save_hyperparameters()
+        self.name = self.__class__.__name__
+        self.model = self.init_base_model()
+        
 
         self.accuracy = Accuracy(task="multiclass", num_classes=NUM_CLASSES)
         self.mcc = MatthewsCorrCoef(task="multiclass",num_classes=NUM_CLASSES)
@@ -63,6 +69,41 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.test_step_prediction = []
         self.test_step_label = []
         self.test_step_input = []
+
+
+        self.log_config = {
+            'confusion_matrix':True,
+            'roc_curve':True,
+            'auroc':True,
+            'classification_report':True,
+            'pytorch_cam':True,
+            'captum_alg':True,
+        }
+
+        if log_config:
+            self.log_config.update(log_config)
+
+        self.save_hyperparameters({
+            'lr':self.lr,
+            'momentum':self.momentum,
+            'weight_decay':self.weight_decay,
+            'batch_size':self.batch_size,
+            'label_smoothing':self.label_smoothing,
+            'lr_scheduler':self.lr_scheduler,
+            'lr_warmup_epochs':self.lr_warmup_epochs,
+            'lr_warmup_method':self.lr_warmup_method,
+            'optimizer_algorithm':self.optimizer_algorithm,
+            'num_workers':self.num_workers,
+            'epochs':self.epochs,
+            'lr_warmup_decay':self.lr_warmup_decay,
+            'norm_weight_decay':self.norm_weight_decay,
+            'name':self.name
+            })
+        
+
+    @abstractmethod
+    def init_base_model(self):
+        pass
 
     def _print_parameters(self):
         print(f''' Model was configured with the following parameters:
@@ -79,6 +120,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         epochs={self.epochs}
         optimizer={self.optimizer_algorithm}
         num_workers={self.num_workers}
+        name={self.name}
         ''')
 
     def setup(self, stage: str) -> None:
@@ -123,9 +165,11 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         inputs, labels = batch
         output = self(inputs)
         loss = self.criterion(output,labels)
+
         #one-hot encoded (because of cutmix & mixup), convert to class label
         if labels.size(dim=-1) == NUM_CLASSES:
             labels = torch.argmax(labels,dim=1)
+        
         accuracy = self.accuracy(output,labels)
         mcc = self.mcc(output,labels)
 
@@ -183,47 +227,69 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         all_labels = torch.cat(self.test_step_label) # (2625)
         all_images = torch.cat(self.test_step_input) # (2625,3,224,224)
 
+        all_predictions_probabilities = torch.softmax(all_predictions,dim=1) #(2625,525)
+        all_predictions_max_probabilities = torch.max(all_predictions,dim=1) #(2625)
 
+        top_k = partial(torch.topk,k = TOP_K)
+        bottom_k = partial(torch.topk, k=TOP_K, largest=False)
+        rand_k = partial(utils.get_k_random_values,k=TOP_K,device="cuda")
+        selection_functions = [(top_k,"Top"),(bottom_k,"Bot"),(rand_k,"Random")]
 
+        target_layers = [self.model.layer4[-1]]
 
-        all_predictions_probabilities = torch.softmax(all_predictions,dim=1)
-        all_predictions_max_probabilities = torch.max(all_predictions,dim=1)
-        top_k_propabilities = torch.topk(all_predictions_max_probabilities.values,10)
-        bottom_k_propabilities = torch.topk(all_predictions_max_probabilities.values,10,largest=False)
-        all_predictions_idx = torch.argmax(all_predictions,dim=1)
+        top_k_propabilities = torch.topk(all_predictions_max_probabilities.values,10) #(k)
+        bottom_k_propabilities = torch.topk(all_predictions_max_probabilities.values,10,largest=False) #(k)
+        all_predictions_idx = torch.argmax(all_predictions_probabilities,dim=1) #(2625)
 
-         
         #Create the confusion matrix
-        print('Computing confusion matrix...')
-        computed_confusion = self.confusion_matrix(all_predictions,all_labels)
-        fig = utils.get_confusion_matrix_figure(computed_confusion=computed_confusion.cpu().numpy().astype(int))
-        self.logger.experiment.add_figure('Confusion matrix',fig,self.current_epoch)
+        if self.log_config['confusion_matrix']:
+            print('Computing confusion matrix...')
+            computed_confusion = self.confusion_matrix(all_predictions,all_labels)
+            fig = utils.get_confusion_matrix_figure(computed_confusion=computed_confusion.cpu().numpy().astype(int))
+            self.logger.experiment.add_figure('Confusion matrix',fig,self.current_epoch)
 
-        #Create ROC-Curve
-        fpr, tpr, thresholds = self.roc_curve(all_predictions,all_labels)
-        #For each class, create a seperate roc-curve
-        for i in tqdm(range(NUM_CLASSES),desc="ROC curve"):
-            fig = utils.get_roc_curve_figure(fpr=fpr[i],tpr=tpr[i],thresholds=thresholds[i])
-            self.logger.experiment.add_figure(f'ROC curve for class {i}',fig,self.current_epoch)
+        if self.log_config['roc_curve']:
+            #Create ROC-Curve
+            fpr, tpr, thresholds = self.roc_curve(all_predictions,all_labels)
+            
+            #For each class, create a seperate roc-curve
+            for i in tqdm(range(NUM_CLASSES),desc="ROC curve"):
+                fig = utils.get_roc_curve_figure(fpr=fpr[i],tpr=tpr[i],thresholds=thresholds[i])
+                self.logger.experiment.add_figure(f'ROC curve for class {i}',fig,self.current_epoch)
 
-        #Create AUROC
-        print('Computing Area under ROC')
-        auroc = self.auroc(all_predictions,all_labels)
-        self.log('Area under ROC',auroc,batch_size=self.batch_size)
+        if self.log_config['auroc']:
+            #Create AUROC
+            print('Computing Area under ROC')
+            auroc = self.auroc(all_predictions,all_labels)
+            self.log('Area under ROC',auroc,batch_size=self.batch_size)
 
         #Create classification report
-        print('Computing classification report')
-        report = classification_report(all_labels.cpu(),torch.argmax(all_predictions,dim=1).cpu())
-        self.logger.experiment.add_text('Classification report',report)
+        if self.log_config['classification_report']:
+            print('Computing classification report')
+            report = classification_report(all_labels.cpu(),torch.argmax(all_predictions,dim=1).cpu())
+            self.logger.experiment.add_text('Classification report',report)
 
 
-        #Top 10 predictions
+        if self.log_config['pytorch_cam']:
+            print()
         
+        if self.log_config['captum_alg']:
+            print()
+        #Top 10 predictions
+
         #Worst 10 predictions
+            
+        #Random predictions
 
-        #Gradcam
+        #Pytorch-cam
 
-        #Integrated gradients
+        #Other attribution methods
+
+        #ROC Curve fix <-
+
+        #Online/Offline KD
+
+        #Different layers for GradCAM
 
 
 
@@ -328,8 +394,12 @@ class EfficientNetPretrainedBase(ImageClassifierBase,ABC):
         for param in self.efficient_net.parameters():
             param.requires_grad = True
 
+
+
+#Consider inherting from ImageClassifierBase
 class KnowledgeDistillationModule(pl.LightningModule):
-    def __init__(self,student_model,teacher_model,
+    def __init__(self,student_model,
+                 teacher_model,
                  lr=0.1,
                  momentum=0.9,
                  weight_decay=2e-5,
@@ -344,7 +414,6 @@ class KnowledgeDistillationModule(pl.LightningModule):
                  epochs=150,
                  alpha=0.95,
                  T=3.5):
-        super().__init__()
         self.student_model = student_model
         self.teacher_model = teacher_model
         #gradient computation not needed for teacher model!
@@ -364,9 +433,11 @@ class KnowledgeDistillationModule(pl.LightningModule):
         self.alpha = alpha
         self.T = T
         self.name = f'{self.student_model.name}_{self.teacher_model.name}_alpha={self.alpha}_T={self.T}'
-        self.save_hyperparameters(ignore=['student_model','teacher_model'])
         self.accuracy = Accuracy(task="multiclass", num_classes=NUM_CLASSES)
         self.mcc = MatthewsCorrCoef(task="multiclass",num_classes=NUM_CLASSES)
+
+        #When inherting from imageclassifierbase, dont ignore the hyperparameters, only add "T","alpha"
+        self.save_hyperparameters(ignore=['student_model','teacher_model','accuracy','mcc'])
 
     def forward(self, x) -> Any:
         out = self.student_model(x)
@@ -407,8 +478,10 @@ class KnowledgeDistillationModule(pl.LightningModule):
     
     def training_step(self, batch,batch_idx):
         images, labels = batch
+
         #Teacher-model should be in evaluation mode (this turns off dropout etc)
         self.teacher_model.eval()
+
         #No gradient computation for teacher-model
         with torch.no_grad():  
              output_teacher = self.teacher_model(images)
@@ -416,9 +489,20 @@ class KnowledgeDistillationModule(pl.LightningModule):
         #Training mode for student-model, gradient computation should be ON
         output_student = self(images)
 
+        #one-hot encoded (because of cutmix & mixup), convert to class label
+        if labels.size(dim=-1) == NUM_CLASSES:
+            labels = torch.argmax(labels,dim=1)
+
+
+        #Consider using self.criterion for the cr_loss
+        #Try 3 different options
+        #1. kd_loss + cr_loss (like in the original paper)
+        #2. mse_loss + cr_loss (https://arxiv.org/pdf/2105.08919.pdf)
+        #3. only mse_loss during training, but cross entroy during validation
         kd_loss, cr_loss, total_loss = knowledge_distillation_loss(student_output=output_student,
                                                                    teacher_output=output_teacher,
                                                                    labels=labels,
+                                                                   label_smoothing=0.0,
                                                                    alpha=self.alpha,
                                                                    T=self.T)
         accuracy = self.accuracy(output_student,labels)
@@ -426,9 +510,12 @@ class KnowledgeDistillationModule(pl.LightningModule):
 
 
         self.log("train_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+
+        #log all three loses in one graph
+
         self.log("train_kd_loss",kd_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("train_cr_loss",cr_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
-        self.log("train_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("train_total_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("train_mcc",mcc,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         return total_loss
     
@@ -713,7 +800,6 @@ class VisionTransformer_H_14(ImageClassifierBase):
 class Resnet_18(ImageClassifierBase):
     def __init__(self,lr,weight_decay,batch_size):
         super().__init__(lr=lr,weight_decay=weight_decay,batch_size=batch_size)
-        self.name = "Resnet18"
         self.model = resnet18(weights=None, num_classes=NUM_CLASSES)
     def forward(self,x):
         out = self.model(x)
@@ -722,7 +808,6 @@ class Resnet_18(ImageClassifierBase):
 class Resnet_18_Dropout(ImageClassifierBase):
     def __init__(self,lr,weight_decay,batch_size,dropout=0.2):
         super().__init__(lr=lr,weight_decay=weight_decay,batch_size=batch_size)
-        self.name = "Resnet18"
         self.dropout = dropout
         self.model = resnet18(weights=None, num_classes=NUM_CLASSES)
         fc_layer = self.model.fc
@@ -736,7 +821,6 @@ class Resnet_18_Dropout(ImageClassifierBase):
 class Resnet_101(ImageClassifierBase):
     def __init__(self,lr,weight_decay,batch_size):
         super().__init__(lr=lr,weight_decay=weight_decay,batch_size=batch_size)
-        self.name = "Resnet101"
         self.model = resnet101(weights=None, num_classes=NUM_CLASSES)
     def forward(self,x):
         out = self.model(x)
@@ -746,7 +830,6 @@ class Resnet_101(ImageClassifierBase):
 class NaiveClassifier(ImageClassifierBase):
     def __init__(self,lr,momentum,batch_size):
         super().__init__(lr,momentum,batch_size)
-        self.name = "Naive"
         self.conv1 = nn.Conv2d(3, 32, 5)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(32, 64, 5)

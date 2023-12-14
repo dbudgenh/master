@@ -29,8 +29,10 @@ def main():
                                 batch_size=BATCH_SIZE,
                                 num_workers=NUM_WORKERS,
                                 collate_fn=None)
-    teacher = EfficientNet_V2_L.load_from_checkpoint(checkpoint_path=TEACHER_CHECKPOINT)
-    student = EfficientNet_V2_S()
+    
+    teacher = EfficientNet_V2_L.load_from_checkpoint(checkpoint_path=TEACHER_CHECKPOINT,batch_size=BATCH_SIZE)
+    student = EfficientNet_V2_S(batch_size=BATCH_SIZE)
+    
     kd_model= KnowledgeDistillationModule(student_model=student,
                                           teacher_model=teacher,
                                           lr=LEARNING_RATE,

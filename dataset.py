@@ -65,7 +65,7 @@ class BirdDataset(Dataset):
         image = default_loader(img_path) #read_image(img_path) #output has shape (3,224,224)
         if self.transform:
             image = self.transform(image)
-        return image, class_id,default_loader(img_path)
+        return image, class_id,img_path
     
 class BirdDatasetNPZ(Dataset):
     """Dataset containing images of birds. The dataset gets stored in memory, by loading the .npz (numpy compressed file) file
@@ -216,24 +216,24 @@ class BirdDataModuleV2(BaseDataModule):
     def __init__(self,root_dir,train_transform,valid_transform,batch_size=32,num_workers=2,collate_fn=None):
         super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers,collate_fn=collate_fn)
         self.root_dir = root_dir
-        self.mappings = self._load_dict('mappings.pkl')
+        #self.mappings = self._load_dict('mappings.pkl')
 
-    def _load_dict(self,file_name):
-        with open(file_name, 'rb') as f:
-            return pickle.load(f)
+    # def _load_dict(self,file_name):
+    #     with open(file_name, 'rb') as f:
+    #         return pickle.load(f)
     
-        """The labels for the classes are sorted aphabetically by bird name. This is different from the bird.csv file
-           To keep the labels consistent, we map the labels to that of the birds.csv file
-        """
-    def _convert_label(self,label):
-        return self.mappings[label]
+    #     """The labels for the classes are sorted aphabetically by bird name. This is different from the bird.csv file
+    #        To keep the labels consistent, we map the labels to that of the birds.csv file
+    #     """
+    # def _convert_label(self,label):
+    #     return self.mappings[label]
 
 
     def train_data(self):
-        return ImageFolder(root=self.root_dir + "/train" ,transform=self.train_transform,target_transform=self._convert_label)
+        return ImageFolder(root=self.root_dir + "/train" ,transform=self.train_transform,)#target_transform=self._convert_label)
     def valid_data(self):
-        return ImageFolder(root=self.root_dir + "/valid" ,transform=self.valid_transform,target_transform=self._convert_label)
+        return ImageFolder(root=self.root_dir + "/valid" ,transform=self.valid_transform,)#target_transform=self._convert_label)
     def test_data(self):
-        return ImageFolder(root=self.root_dir + "/test" ,transform=self.valid_transform,target_transform=self._convert_label)
+        return ImageFolder(root=self.root_dir + "/test" ,transform=self.valid_transform,)#target_transform=self._convert_label)
     def predict_data(self):
-        return ImageFolder(root=self.root_dir + "/test" ,transform=self.valid_transform,target_transform=self._convert_label)
+        return ImageFolder(root=self.root_dir + "/test" ,transform=self.valid_transform,)#target_transform=self._convert_label)

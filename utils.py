@@ -5,6 +5,27 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
+import torch
+import importlib
+
+MODULE_NAME = 'models'
+def get_model(checkpoint_path):
+    checkpoint = torch.load(checkpoint_path)
+    model_name = checkpoint['hyper_parameters']['name']
+    del checkpoint
+    class_object = get_class(MODULE_NAME,model_name)
+    return class_object.load_from_checkpoint(checkpoint_path)
+
+def get_class(module_name, class_name):
+    try:
+        # Dynamically import the module
+        module = importlib.import_module(module_name)
+
+        # Get the class object from the module
+        return getattr(module, class_name)
+    except (ImportError, AttributeError) as e:
+        # Handle import or attribute errors
+        raise ValueError(f"Error loading class '{class_name}' from module '{module_name}': {e}")
 
 #https://github.com/pytorch/vision/blob/main/references/classification/utils.py
 def set_weight_decay(
@@ -83,8 +104,8 @@ def find_largest_version_number(folder_path):
             
     return max_version + 1
 
-def get_roc_curve_figure(fpr, tpr, thresholds):
-    plt.figure(figsize=(20, 20))
+def get_roc_curve_figure(fpr, tpr, thresholds,step_size=10,font_size=10):
+    plt.figure(figsize=(12, 8))
     plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve', marker='o',markersize=3)
     plt.plot([0, 1], [0, 1], color='navy', lw=2, label='No skill', linestyle='--')
     plt.xlim([-0.05, 1.05])
@@ -94,8 +115,9 @@ def get_roc_curve_figure(fpr, tpr, thresholds):
     plt.title(f'Receiver Operating Characteristic (ROC) Curve for class')
     plt.legend(loc='lower right')
     # Annotate ROC curve with thresholds
-    for i, threshold in enumerate(thresholds):
-        plt.annotate(f'{threshold:.2f}', (fpr[i], tpr[i]), textcoords="offset points", xytext=(0, 5), ha='center',fontsize=6)
+    for i, threshold in enumerate(thresholds[::step_size]):
+        plt.scatter(fpr[::step_size][i], tpr[::step_size][i], label='Specific Point', color='black', marker=".", s=10,zorder=2)
+        plt.annotate(f'{threshold:.2f}', (fpr[::step_size][i], tpr[::step_size][i]), textcoords="offset points", xytext=(0, 5), ha='center',fontsize=font_size)
     result = plt.gcf()
     plt.close()
     return result
@@ -113,6 +135,34 @@ def get_confusion_matrix_figure(computed_confusion):
     plt.close(fig)
     return fig
 
+def get_k_random_values(tensor, k,device=None):
+    """
+    Get k random values from a PyTorch tensor along with their indices.
+
+    Args:
+    - tensor (torch.Tensor): Input tensor.
+    - k (int): Number of random values to select
+    - device (str): A torch device 
+
+    Returns:
+    - values (torch.Tensor): Tensor containing the selected random values.
+    - indices (torch.Tensor): Tensor containing the indices of the selected values.
+    """
+
+    # Check if k is greater than the number of elements in the tensor
+    if k > tensor.numel():
+        raise ValueError("k cannot be greater than the number of elements in the tensor.")
+
+    # Flatten the tensor to 1D
+    flattened_tensor = tensor.view(-1)
+
+    # Generate random indices
+    random_indices = torch.randperm(flattened_tensor.numel(),device=device)[:k]
+
+    # Use topk to get the values and indices
+    values, indices = torch.topk(flattened_tensor[random_indices], k)
+
+    return values, random_indices[indices]
 def main():
     pass
 

@@ -1,7 +1,7 @@
 import torch.nn.functional as F
 import torch.nn as nn
 
-def knowledge_distillation_loss(student_output,teacher_output,labels,alpha=0.95,T=3.5):
+def knowledge_distillation_loss(student_output,teacher_output,labels,label_smoothing=0.0,alpha=0.95,T=3.5):
     """Compute the KD-loss between student_output, teacher_output and the correct labels. 
 
     Args:
@@ -14,12 +14,14 @@ def knowledge_distillation_loss(student_output,teacher_output,labels,alpha=0.95,
 
     kd_loss = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(student_output/T,dim=1),
                         F.softmax(teacher_output/T,dim=1)) * (alpha * T * T)
-    cr_loss = F.cross_entropy(student_output,labels) * (1. - alpha)
+    cr_loss = F.cross_entropy(student_output,labels,label_smoothing=label_smoothing) * (1. - alpha)
     return kd_loss, cr_loss, kd_loss + cr_loss
 
 
 #https://arxiv.org/abs/2105.08919
 def mse_loss(student_output,teacher_output): 
     return F.mse_loss(student_output,teacher_output)
+
+
 
 

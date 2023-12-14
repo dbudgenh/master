@@ -7,7 +7,7 @@ from torchvision.transforms.v2 import AugMix
 from dataset import BirdDataset,BirdDataModule,BirdDataNPZModule,BirdDataModuleV2
 from pytorch_lightning.callbacks import ModelCheckpoint,LearningRateMonitor
 import pytorch_lightning as pl
-from transforms import default_transforms,default_collate_fn
+from transformations import default_transforms,default_collate_fn
 
 LEARNING_RATE_PRE_TRAIN = 0.1
 WEIGHT_DECAY_PRE_TRAIN = 0.00002

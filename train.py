@@ -12,7 +12,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint,LearningRateMonitor,EarlyStopping
 import numpy as np
 from torchvision.models import EfficientNet_V2_S_Weights,EfficientNet_B0_Weights
-from transforms import default_transforms,default_collate_fn,old_transforms
+from transformations import default_transforms,default_collate_fn,old_transforms
 
 NUM_WORKERS = 4
 CHECKPOINT_PATH = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_S_Adam/epoch=184_validation_loss=0.1048_validation_accuracy=0.98_validation_mcc=0.95.ckpt'
@@ -38,8 +38,8 @@ def main():
     train_transform, valid_transform, version = old_transforms() #default_transforms()
     collate_fn = None #default_collate_fn()
 
-    datamodule = BirdDataModule(root_dir='C:/Users/david/Desktop/Python/master/data',
-                                csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',
+    datamodule = BirdDataModuleV2(root_dir='C:/Users/david/Desktop/Python/master/data',
+                                #csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',
                                 train_transform=train_transform,
                                 valid_transform=valid_transform,
                                 batch_size=BATCH_SIZE,
@@ -60,16 +60,35 @@ def main():
                               num_workers=NUM_WORKERS,
                               optimizer_algorithm='sgd')
     lr_monitor = LearningRateMonitor(logging_interval='step',log_momentum=False)
-    #+ f"_version={model.logger.version}"
     model_checkpoint = ModelCheckpoint(
                                        filename=f"{model.name}_{version}_"+ "{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}", 
                                        save_top_k=1,
                                        verbose=True,
                                        monitor="validation_loss",
                                        mode='min')
+    
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precision='bf16-mixed') #
     trainer.fit(model=model,datamodule=datamodule,ckpt_path=CHECKPOINT_PATH)
+
+    
+    #switching off inference for test
+    #trainer.inference_mode = False
+    #trainer.test_loop.inference_mode = False
+    #trainer.test(model=model,datamodule=bird_data)
     #trainer.test(model=model,datamodule=datamodule,ckpt_path=)
+
+    log_config = {
+            'confusion_matrix':False,
+            'roc_curve':False,
+            'auroc':False,
+            'classification_report':False,
+            'pytorch_cam':False,
+            'captum_alg':False,
+    }
+
+
+   
+
 
 
 
