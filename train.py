@@ -1,4 +1,4 @@
-from models import EfficientNet_B0,NaiveClassifier,EfficientNet_V2_S,EfficientNet_V2_M,EfficientNet_V2_S_Pretrained,EfficientNet_B0_Pretrained
+from models import EfficientNet_B0,NaiveClassifier,EfficientNet_V2_S,EfficientNet_V2_M,EfficientNet_V2_S_Pretrained
 from dataset import BirdDataNPZModule,BirdDataModule,BirdDataset,BirdDataModuleV2
 import torch
 import torchvision
@@ -14,12 +14,11 @@ import numpy as np
 from torchvision.models import EfficientNet_V2_S_Weights,EfficientNet_B0_Weights
 from transformations import default_transforms,default_collate_fn,old_transforms
 
+
+#CHECKPOINT_PATH = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_S_Adam/epoch=184_validation_loss=0.1048_validation_accuracy=0.98_validation_mcc=0.95.ckpt'
+BATCH_SIZE = 128 #128 is optimal for TPUs, use multiples of 64 that fit into memory
 NUM_WORKERS = 4
-CHECKPOINT_PATH = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_S_Adam/epoch=184_validation_loss=0.1048_validation_accuracy=0.98_validation_mcc=0.95.ckpt'
-BATCH_SIZE = 16 #128 is optimal for TPUs, use multiples of 64 that fit into memory
-
 EPOCHS = 300
-
 LEARNING_RATE = 0.5
 MOMENTUM=0.9
 LR_SCHEDULER = 'cosineannealinglr'
@@ -68,7 +67,7 @@ def main():
                                        mode='min')
     
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precision='bf16-mixed') #
-    trainer.fit(model=model,datamodule=datamodule,ckpt_path=CHECKPOINT_PATH)
+    trainer.fit(model=model,datamodule=datamodule)
 
     
     #switching off inference for test

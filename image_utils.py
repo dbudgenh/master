@@ -32,3 +32,14 @@ def show_multiple_images(images,titles):
         axes[i].set_title(titles[i])
     plt.subplots_adjust(wspace=0.05)
     plt.show()
+
+def create_multiple_images(images,titles):
+    fig, axes = plt.subplots(1, len(images))
+    for i in range(len(images)):
+        axes[i].imshow(images[i])
+        axes[i].axis('off')
+        axes[i].set_title(titles[i])
+    plt.subplots_adjust(wspace=0.05)
+    result = plt.gcf()
+    plt.close()
+    return result
