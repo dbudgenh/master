@@ -55,7 +55,6 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.lr_warmup_decay = lr_warmup_decay
         self.norm_weight_decay = norm_weight_decay
         self.name = self.__class__.__name__
-        self.model = self.init_base_model()
         
 
         self.accuracy = Accuracy(task="multiclass", num_classes=NUM_CLASSES)
@@ -100,10 +99,6 @@ class ImageClassifierBase(ABC,pl.LightningModule):
             'name':self.name
             })
         
-
-    @abstractmethod
-    def init_base_model(self):
-        pass
 
     def _print_parameters(self):
         print(f''' Model was configured with the following parameters:
