@@ -25,12 +25,9 @@ LR_SCHEDULER = 'cosineannealinglr'
 LR_WARMUP_EPOCHS = 5
 LR_WARMUP_METHOD = 'linear'
 LR_WARMUP_DECAY = 0.01
-
 WEIGHT_DECAY = 0.00002
 NORM_WEIGHT_DECAY = 0.0
-
 LABEL_SMOOTHING = 0.1
-
 
 def main():
     torch.set_float32_matmul_precision('medium')
@@ -83,6 +80,9 @@ def main():
             'classification_report':False,
             'pytorch_cam':False,
             'captum_alg':False,
+            'topk':False,
+            'bottomk':False,
+            'randomk':False
     }
 
 

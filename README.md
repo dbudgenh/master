@@ -119,3 +119,5 @@ colab : 2.01it/s batch_size = 128 (total 662it) -> Pro epoch 5.5minuten
 - Multi-teacher approach (1 student, many teachers)
 - Feature based-approach
 - Combine response + feature to get relational approach
+
+Feature based KD: https://github.com/DefangChen/SimKD

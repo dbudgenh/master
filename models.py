@@ -52,6 +52,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
                  log_config= None
                  ):
         super().__init__()
+        self.model = self.init_base_model()
         self.lr = lr
         self.momentum = momentum
         self.weight_decay = weight_decay
@@ -90,7 +91,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
             'captum_alg':True,
             'topk':True,
             'bottomk':True,
-            'randomK':True
+            'randomk':True
         }
 
         if log_config:
@@ -190,12 +191,12 @@ class ImageClassifierBase(ABC,pl.LightningModule):
     def training_step(self, batch,batch_idx):
         inputs, labels = batch
         output = self(inputs)
-        loss = self.criterion(output,labels)
 
         #one-hot encoded (because of cutmix & mixup), convert to class label
         if labels.size(dim=-1) == NUM_CLASSES:
             labels = torch.argmax(labels,dim=1)
-        
+
+        loss = self.criterion(output,labels)
         accuracy = self.accuracy(output,labels)
         mcc = self.mcc(output,labels)
 
@@ -221,9 +222,9 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.logger.experiment.add_scalars('mcc',{'validation':mcc},global_step=self.global_step)
 
 
-        self.log("validation_accuracy",accuracy,prog_bar=True,batch_size=self.batch_size)
-        self.log("validation_loss",loss,prog_bar=True,batch_size=self.batch_size)
-        self.log("validation_mcc",mcc,prog_bar=True,batch_size=self.batch_size)
+        self.log("validation_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
+        self.log("validation_loss",loss,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
+        self.log("validation_mcc",mcc,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         
         return loss
 
@@ -244,16 +245,14 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.test_step_prediction.append(output)
         self.test_step_label.append(labels)
         self.test_step_input.append(inputs)
-
-
         return loss
     
     def on_test_epoch_end(self) -> None:
-        all_predictions = torch.cat(self.test_step_prediction) #(2625,525)
+        all_predictions = torch.cat(self.test_step_prediction) #(2625,NUM_CLASSES)
         all_labels = torch.cat(self.test_step_label) # (2625)
         all_images = torch.cat(self.test_step_input) # (2625,3,224,224)
 
-        all_predictions_probabilities = torch.softmax(all_predictions,dim=1) #(2625,525)
+        all_predictions_probabilities = torch.softmax(all_predictions,dim=1) #(2625,NUM_CLASSES)
         all_predictions_max_probabilities = torch.max(all_predictions,dim=1) #(2625)
 
         top_k = partial(torch.topk,k = TOP_K)
@@ -261,9 +260,9 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         rand_k = partial(utils.get_k_random_values,k=TOP_K,device="cuda")
 
         selection_functions = []
-        selection_functions += [top_k] if self.log_config['topk'] else []
-        selection_functions += [bottom_k] if self.log_config['bottomk'] else []
-        selection_functions += [rand_k] if self.log_config['randomk'] else []
+        selection_functions += [(top_k,"Top")] if self.log_config['topk'] else []
+        selection_functions += [bottom_k,"Bottom"] if self.log_config['bottomk'] else []
+        selection_functions += [rand_k,"Random"] if self.log_config['randomk'] else []
 
         target_layers = [self.model.layer4[-1]]
 
@@ -679,7 +678,7 @@ class EfficientNetPretrainedBase(ImageClassifierBase):
         self.training_mode = training_mode
         print(f"\ttraining_mode={self.training_mode}")
         self.freeze_layers()
-        self.name = self.name + self.training_mode
+        self.name = self.name + "_" + self.training_mode
         
         #Change final classification layer
         #This is necessary, because a pre-trained network is pre-trained on imagenet with 1000 classes

@@ -12,7 +12,7 @@ from transformations import default_transforms,default_collate_fn
 LEARNING_RATE_PRE_TRAIN = 0.1
 WEIGHT_DECAY_PRE_TRAIN = 0.00002
 MOMENTUM=0.9
-EPOCHS_PRE_TRAIN = 100
+EPOCHS_PRE_TRAIN = 25
 BATCH_SIZE = 256
 NUM_WORKERS = 16
 LABEL_SMOOTHING = 0.1
@@ -24,15 +24,15 @@ def main():
     #Mixup-cutmix
     collate_fn = default_collate_fn()
 
-    datamodule = BirdDataModule(root_dir='C:/Users/david/Desktop/Python/master/data',
-                                csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',
+    datamodule = BirdDataModuleV2(root_dir='C:/Users/david/Desktop/Python/master/data',
+                                #csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',
                                 train_transform=train_transform,
                                 valid_transform=valid_transform,
                                 batch_size=BATCH_SIZE,
                                 collate_fn=collate_fn,
                                 num_workers=NUM_WORKERS)
     #START PRE-TRAINING
-    model = EfficientNet_V2_M_Pretrained(lr=LEARNING_RATE_PRE_TRAIN,
+    model = EfficientNet_V2_L_Pretrained(lr=LEARNING_RATE_PRE_TRAIN,
                                          weight_decay=WEIGHT_DECAY_PRE_TRAIN, 
                                          momentum=MOMENTUM,
                                          batch_size=BATCH_SIZE,

@@ -166,9 +166,9 @@ class BaseDataModule(ABC,pl.LightningDataModule):
                           batch_size=self.batch_size,
                           shuffle=False, 
                           num_workers=self.num_workers,
-                          pin_memory=False,
+                          pin_memory=True,
                           #generator=torch.Generator(device='cuda'),
-                          persistent_workers=True if self.num_workers == 0 else True
+                          persistent_workers=False if self.num_workers == 0 else True
                           )
 
 class BirdDataNPZModule(BaseDataModule):

@@ -4,14 +4,14 @@ torchvision.disable_beta_transforms_warning()
 from pytorch_lightning.callbacks import ModelCheckpoint,LearningRateMonitor
 from torchvision.transforms import transforms
 from torchvision.transforms.v2 import AugMix
-from dataset import BirdDataModule,BirdDataset,BirdDataNPZModule
+from dataset import BirdDataModule,BirdDataset,BirdDataNPZModule,BirdDataModuleV2
 from models import EfficientNet_V2_S_Pretrained,EfficientNet_V2_M_Pretrained,EfficientNet_V2_L_Pretrained
 import pytorch_lightning as pl
-from transforms import default_transforms,default_collate_fn
+from transformations import default_transforms,default_collate_fn
 
 #CHECKPOINT_PATH = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_M_Pretrained_Adam/epoch=59_validation_loss=0.6902_validation_accuracy=0.83_validation_mcc=0.82.ckpt'
-CHECKPOINT_PATH = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_L_Pretrained_V2_SGD/version_160/checkpoints/EfficientNet_V2_L_pre_train_V2_epoch=74_validation_loss=1.5844_validation_accuracy=0.93_validation_mcc=0.93.ckpt'
-LEARNING_RATE_FINE_TUNE = 0.0008 #Should be much lower when fine-tuning
+CHECKPOINT_PATH = r"C:\Users\david\Desktop\Python\master\lightning_logs\version_1\checkpoints\EfficientNet_V2_L_Pretrainedpre_train_V2_epoch=21_validation_loss=1.5160_validation_accuracy=0.93_validation_mcc=0.93.ckpt"
+LEARNING_RATE_FINE_TUNE = 0.008 #Should be much lower when fine-tuning
 EPOCHS_FINE_TUNE = 100
 BATCH_SIZE = 64
 NUM_WORKERS = 16
@@ -22,8 +22,8 @@ def main():
     train_transform, valid_transform, version = default_transforms()
     collate_fn = default_collate_fn()
 
-    datamodule = BirdDataModule(root_dir='C:/Users/david/Desktop/Python/master/data',
-                                csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',
+    datamodule = BirdDataModuleV2(root_dir='C:/Users/david/Desktop/Python/master/data',
+                                #csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',
                                 train_transform=train_transform,
                                 valid_transform=valid_transform,
                                 batch_size=BATCH_SIZE,
