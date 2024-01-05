@@ -35,6 +35,7 @@ from image_utils import create_multiple_images
 NUM_CLASSES = 524
 TOP_K = 10
 
+
 class ImageClassifierBase(ABC,pl.LightningModule):
     def __init__(self,lr=0.1,
                  batch_size=32,
@@ -119,18 +120,25 @@ class ImageClassifierBase(ABC,pl.LightningModule):
     def init_base_model(self) -> nn.Module:
         pass
 
-    def forward(self,x):
-        out = self.model(x)
+    def forward(self,x,is_feat=False):
+        if is_feat:
+            out = self.model(x,is_feat)
+        else:
+            out = self.model(x)
         return out
     
     def freeze_layers(self):
         print('Freezing layers')
         for param in self.model.parameters():
             param.requires_grad = False
+
     def unfreeze_layers(self):
         print('Unfreezing layers')
         for param in self.model.parameters():
             param.requires_grad = True
+
+    def log_text_to_tensorboard(self,tag,text_string,global_step=None,walltime=None):
+        self.logger.experiment.add_text(tag,text_string,global_step,walltime)
 
     def _print_parameters(self):
         print(f''' Model was configured with the following parameters:
@@ -247,6 +255,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.test_step_input.append(inputs)
         return loss
     
+
     def on_test_epoch_end(self) -> None:
         all_predictions = torch.cat(self.test_step_prediction) #(2625,NUM_CLASSES)
         all_labels = torch.cat(self.test_step_label) # (2625)
@@ -371,6 +380,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.test_step_prediction.clear()
         self.test_step_label.clear()
         self.test_step_input.clear()
+
 #Consider inherting from ImageClassifierBase
 class KnowledgeDistillationModule(pl.LightningModule):
     def __init__(self,student_model,
@@ -391,6 +401,9 @@ class KnowledgeDistillationModule(pl.LightningModule):
                  T=3.5):
         self.student_model = student_model
         self.teacher_model = teacher_model
+
+        #Call super.__init__ here!!
+        
         #gradient computation not needed for teacher model!
         self.teacher_model.freeze_layers()
         self.lr = lr
@@ -411,8 +424,17 @@ class KnowledgeDistillationModule(pl.LightningModule):
         self.accuracy = Accuracy(task="multiclass", num_classes=NUM_CLASSES)
         self.mcc = MatthewsCorrCoef(task="multiclass",num_classes=NUM_CLASSES)
 
-        #When inherting from imageclassifierbase, dont ignore the hyperparameters, only add "T","alpha"
-        self.save_hyperparameters(ignore=['student_model','teacher_model','accuracy','mcc'])
+        self.save_hyperparameters({
+            'alpha':self.alpha,
+            'T':self.T,
+        })
+
+        #add hyperparameters of each model to the hparams dict of the KD class
+        for key in self.student_model.hparams:
+            self.save_hyperparameters({f"student_{key}":self.student_model.hparams[key]})
+            
+        for key in self.teacher_model.hparams:
+            self.save_hyperparameters({f"teacher_{key}":self.teacher_model.hparams[key]})
 
     def forward(self, x) -> Any:
         out = self.student_model(x)
@@ -550,13 +572,31 @@ class KnowledgeDistillationModule(pl.LightningModule):
 
 class EfficientNet_B0(ImageClassifierBase):
     def __init__(self,lr=0.1,
-                 weight_decay=2e-5,
+                 weight_decay=0.00002,
+                 batch_size=32,
                  momentum=0.9,
-                 batch_size=32):
+                 label_smoothing=0.1,
+                 lr_scheduler='cosineannealinglr',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0.01,
+                 epochs=150,
+                 norm_weight_decay=0.0,
+                 optimizer_algorithm='sgd',
+                 num_workers=0):
         super().__init__(lr=lr,
+                         batch_size=batch_size,
+                         epochs=epochs,
                          weight_decay=weight_decay,
                          momentum=momentum,
-                         batch_size=batch_size)
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_scheduler=lr_scheduler,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         num_workers=num_workers)
     def init_base_model(self):
         return efficientnet_b0(weights=None, num_classes=NUM_CLASSES)   
 class EfficientNet_V2_S(ImageClassifierBase):
@@ -732,10 +772,10 @@ class EfficientNetPretrainedBase(ImageClassifierBase):
 class EfficientNet_V2_S_Pretrained(EfficientNetPretrainedBase):
     def __init__(self,
                  lr,
-                 weight_decay,
-                 momentum,
                  batch_size,
                  epochs,
+                 momentum=0.9,
+                 weight_decay=2e-5,
                  training_mode='pre_train',
                  norm_weight_decay=0.0,
                  label_smoothing=0.1,
@@ -762,10 +802,10 @@ class EfficientNet_V2_S_Pretrained(EfficientNetPretrainedBase):
 class EfficientNet_V2_M_Pretrained(EfficientNetPretrainedBase):
     def __init__(self,
                  lr,
-                 weight_decay,
-                 momentum,
                  batch_size,
                  epochs,
+                 momentum=0.9,
+                 weight_decay=2e-5,
                  training_mode='pre_train',
                  norm_weight_decay=0.0,
                  label_smoothing=0.1,
@@ -792,10 +832,10 @@ class EfficientNet_V2_M_Pretrained(EfficientNetPretrainedBase):
 class EfficientNet_V2_L_Pretrained(EfficientNetPretrainedBase):
     def __init__(self,
                  lr,
-                 weight_decay,
-                 momentum,
                  batch_size,
                  epochs,
+                 momentum=0.9,
+                 weight_decay=2e-5,
                  training_mode='pre_train',
                  norm_weight_decay=0.0,
                  label_smoothing=0.1,
@@ -829,13 +869,62 @@ class VisionTransformer_H_14(ImageClassifierBase):
     pass
 
 class Resnet_18(ImageClassifierBase):
-    def __init__(self,lr,weight_decay,batch_size):
-        super().__init__(lr=lr,weight_decay=weight_decay,batch_size=batch_size)
+    def __init__(self,lr=0.01,
+                 weight_decay=0.00002,
+                 momentum=0.9,
+                 batch_size=32,
+                 label_smoothing=0.1,
+                 lr_scheduler='cosineannealinglr',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0.01,
+                 epochs=150,
+                 norm_weight_decay=0.0,
+                 optimizer_algorithm='sgd',
+                 num_workers=0):
+        super().__init__(lr=lr,
+                         batch_size=batch_size,
+                         epochs=epochs,
+                         weight_decay=weight_decay,
+                         momentum=momentum,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_scheduler=lr_scheduler,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         num_workers=num_workers)
     def init_base_model(self):
         return resnet18(weights=None,num_classes=NUM_CLASSES)  
 class Resnet_18_Dropout(ImageClassifierBase):
-    def __init__(self,lr,weight_decay,batch_size,dropout=0.2):
-        super().__init__(lr=lr,weight_decay=weight_decay,batch_size=batch_size)
+    def __init__(self,dropout,
+                 lr=0.01,
+                 weight_decay=0.00002,
+                 momentum=0.9,
+                 batch_size=32,
+                 label_smoothing=0.1,
+                 lr_scheduler='cosineannealinglr',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0.01,
+                 epochs=150,
+                 norm_weight_decay=0.0,
+                 optimizer_algorithm='sgd',
+                 num_workers=0):
+        super().__init__(lr=lr,
+                         batch_size=batch_size,
+                         epochs=epochs,
+                         weight_decay=weight_decay,
+                         momentum=momentum,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_scheduler=lr_scheduler,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         num_workers=num_workers)
         self.dropout = dropout
         fc_layer = self.model.fc
         self.model.fc = nn.Sequential(
@@ -845,15 +934,69 @@ class Resnet_18_Dropout(ImageClassifierBase):
     def init_base_model(self):
         return resnet18(weights=None,num_classes=NUM_CLASSES) 
 class Resnet_101(ImageClassifierBase):
-    def __init__(self,lr,weight_decay,batch_size):
-        super().__init__(lr=lr,weight_decay=weight_decay,batch_size=batch_size)
+    def __init__(self,lr=0.01,
+                 weight_decay=0.00002,
+                 momentum=0.9,
+                 batch_size=32,
+                 label_smoothing=0.1,
+                 lr_scheduler='cosineannealinglr',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0.01,
+                 epochs=150,
+                 norm_weight_decay=0.0,
+                 optimizer_algorithm='sgd',
+                 num_workers=0):
+        super().__init__(lr=lr,
+                         batch_size=batch_size,
+                         epochs=epochs,
+                         weight_decay=weight_decay,
+                         momentum=momentum,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_scheduler=lr_scheduler,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         num_workers=num_workers)
     def init_base_model(self):
         return resnet101(weights=None, num_classes=NUM_CLASSES)
 
-
 class NaiveClassifier(ImageClassifierBase):
-    def __init__(self,lr,momentum,batch_size):
-        super().__init__(lr,momentum,batch_size)
+    def __init__(self,lr=0.01,
+                 weight_decay=0.00002,
+                 momentum=0.9,
+                 batch_size=32,
+                 label_smoothing=0.1,
+                 lr_scheduler='cosineannealinglr',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0.01,
+                 epochs=150,
+                 norm_weight_decay=0.0,
+                 optimizer_algorithm='sgd',
+                 num_workers=0):
+        super().__init__(lr=lr,
+                         batch_size=batch_size,
+                         epochs=epochs,
+                         weight_decay=weight_decay,
+                         momentum=momentum,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_scheduler=lr_scheduler,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         num_workers=num_workers)
+    def init_base_model(self) -> Module:
+        return Naive()
+
+
+class Naive(Module):
+    def __init__(self):
+        super().__init__()
         self.conv1 = nn.Conv2d(3, 32, 5)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(32, 64, 5)
@@ -873,7 +1016,46 @@ class NaiveClassifier(ImageClassifierBase):
         x = self.fc3(x)
         return x
 
-    def init_base_model(self) -> Module:
-        return self
+class SimKD(nn.Module):
+    def __init__(self, *, s_n, t_n, factor=2): 
+        super(SimKD, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d((1,1))       
 
+        def conv1x1(in_channels, out_channels, stride=1):
+            return nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0, stride=stride, bias=False)
+        def conv3x3(in_channels, out_channels, stride=1, groups=1):
+            return nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=stride, bias=False, groups=groups)
+        # A bottleneck design to reduce extra parameters
+        self.transfer = nn.Sequential(
+            conv1x1(s_n, t_n//factor),
+            nn.BatchNorm2d(t_n//factor),
+            nn.ReLU(inplace=True),
+            conv3x3(t_n//factor, t_n//factor),
+            #conv3x3(t_n//factor, t_n//factor, groups=t_n//factor),
+            nn.BatchNorm2d(t_n//factor),
+            nn.ReLU(inplace=True),
+            conv1x1(t_n//factor, t_n),
+            nn.BatchNorm2d(t_n),
+            nn.ReLU(inplace=True),
+        )
+    def forward(self, feat_s, feat_t, cls_t):
+        # Spatial Dimension Alignment
+        s_H, t_H = feat_s.shape[2], feat_t.shape[2]
+        if s_H > t_H:
+            source = F.adaptive_avg_pool2d(feat_s, (t_H, t_H))
+            target = feat_t
+        else:
+            source = feat_s
+            target = F.adaptive_avg_pool2d(feat_t, (s_H, s_H))
+        
+        trans_feat_t=target
+        
+        # Channel Alignment
+        trans_feat_s = self.transfer(source)
 
+        # Prediction via Teacher Classifier
+        temp_feat = self.avg_pool(trans_feat_s)
+        temp_feat = temp_feat.view(temp_feat.size(0), -1)
+        pred_feat_s = cls_t(temp_feat)
+        
+        return trans_feat_s, trans_feat_t, pred_feat_s

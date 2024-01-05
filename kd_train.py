@@ -29,10 +29,8 @@ def main():
                                 batch_size=BATCH_SIZE,
                                 num_workers=NUM_WORKERS,
                                 collate_fn=None)
-    
-    teacher = EfficientNet_V2_L.load_from_checkpoint(checkpoint_path=TEACHER_CHECKPOINT,batch_size=BATCH_SIZE)
-    student = EfficientNet_V2_S(batch_size=BATCH_SIZE)
-    
+    teacher = EfficientNet_V2_L.load_from_checkpoint(checkpoint_path=TEACHER_CHECKPOINT)
+    student = EfficientNet_V2_S()
     kd_model= KnowledgeDistillationModule(student_model=student,
                                           teacher_model=teacher,
                                           lr=LEARNING_RATE,
@@ -57,7 +55,6 @@ def main():
                                        monitor="validation_loss",
                                        mode='min')
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precision='bf16-mixed')
-    #ckpt_path = 'C:/Users/david/Desktop/test/epoch=303_validation_loss=0.4812_validation_accuracy=0.99_validation_mcc=0.97.ckpt'
     trainer.fit(model=kd_model,datamodule=datamodule)#,ckpt_path=ckpt_path)
 
 if __name__ == '__main__':

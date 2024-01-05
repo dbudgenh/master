@@ -31,8 +31,8 @@ LABEL_SMOOTHING = 0.1
 
 def main():
     torch.set_float32_matmul_precision('medium')
-    train_transform, valid_transform, version = old_transforms() #default_transforms()
-    collate_fn = None #default_collate_fn()
+    train_transform, valid_transform, version = default_transforms()
+    collate_fn = default_collate_fn()
 
     datamodule = BirdDataModuleV2(root_dir='C:/Users/david/Desktop/Python/master/data',
                                 #csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',
@@ -55,7 +55,7 @@ def main():
                               epochs=EPOCHS,
                               num_workers=NUM_WORKERS,
                               optimizer_algorithm='sgd')
-    lr_monitor = LearningRateMonitor(logging_interval='step',log_momentum=False)
+    lr_monitor = LearningRateMonitor(logging_interval='step')
     model_checkpoint = ModelCheckpoint(
                                        filename=f"{model.name}_{version}_"+ "{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}", 
                                        save_top_k=1,
@@ -65,6 +65,8 @@ def main():
     
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precision='bf16-mixed') #
     trainer.fit(model=model,datamodule=datamodule)
+    model.log_text_to_tensorboard('best_checkpoint_file_name',model_checkpoint.best_model_path)
+
 
     
     #switching off inference for test

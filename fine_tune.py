@@ -12,7 +12,7 @@ from transformations import default_transforms,default_collate_fn
 #CHECKPOINT_PATH = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_M_Pretrained_Adam/epoch=59_validation_loss=0.6902_validation_accuracy=0.83_validation_mcc=0.82.ckpt'
 CHECKPOINT_PATH = r"C:\Users\david\Desktop\Python\master\lightning_logs\version_1\checkpoints\EfficientNet_V2_L_Pretrainedpre_train_V2_epoch=21_validation_loss=1.5160_validation_accuracy=0.93_validation_mcc=0.93.ckpt"
 LEARNING_RATE_FINE_TUNE = 0.008 #Should be much lower when fine-tuning
-EPOCHS_FINE_TUNE = 100
+EPOCHS_FINE_TUNE = 250
 BATCH_SIZE = 64
 NUM_WORKERS = 16
 
