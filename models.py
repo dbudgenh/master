@@ -50,7 +50,8 @@ class ImageClassifierBase(ABC,pl.LightningModule):
                  lr_warmup_decay=0.01,
                  optimizer_algorithm='sgd',
                  num_workers=0,
-                 log_config= None
+                 log_config= None,
+                 model = None
                  ):
         super().__init__()
         self.model = self.init_base_model()
@@ -211,6 +212,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.logger.experiment.add_scalars('loss',{'train':loss},global_step=self.global_step)
         self.logger.experiment.add_scalars('accuracy',{'train':accuracy},global_step=self.global_step)
         self.logger.experiment.add_scalars('mcc',{'train':mcc},global_step=self.global_step)
+
         self.log("train_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         self.log("train_loss",loss,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         self.log("train_mcc",mcc,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
@@ -381,7 +383,6 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.test_step_label.clear()
         self.test_step_input.clear()
 
-#Consider inherting from ImageClassifierBase
 class KnowledgeDistillationModule(pl.LightningModule):
     def __init__(self,student_model,
                  teacher_model,
@@ -401,9 +402,6 @@ class KnowledgeDistillationModule(pl.LightningModule):
                  T=3.5):
         self.student_model = student_model
         self.teacher_model = teacher_model
-
-        #Call super.__init__ here!!
-        
         #gradient computation not needed for teacher model!
         self.teacher_model.freeze_layers()
         self.lr = lr
@@ -425,6 +423,20 @@ class KnowledgeDistillationModule(pl.LightningModule):
         self.mcc = MatthewsCorrCoef(task="multiclass",num_classes=NUM_CLASSES)
 
         self.save_hyperparameters({
+            'lr':self.lr,
+            'momentum':self.momentum,
+            'weight_decay':self.weight_decay,
+            'batch_size':self.batch_size,
+            'label_smoothing':self.label_smoothing,
+            'lr_scheduler':self.lr_scheduler,
+            'lr_warmup_epochs':self.lr_warmup_epochs,
+            'lr_warmup_method':self.lr_warmup_method,
+            'optimizer_algorithm':self.optimizer_algorithm,
+            'num_workers':self.num_workers,
+            'epochs':self.epochs,
+            'lr_warmup_decay':self.lr_warmup_decay,
+            'norm_weight_decay':self.norm_weight_decay,
+            'name':self.name,
             'alpha':self.alpha,
             'T':self.T,
         })
@@ -505,11 +517,22 @@ class KnowledgeDistillationModule(pl.LightningModule):
         accuracy = self.accuracy(output_student,labels)
         mcc = self.mcc(output_student,labels)
 
+        #log all three loses in 1 graph, each step
+        self.logger.experiment.add_scalars('loss_step',{
+            'total_loss':total_loss,
+            'cr_loss':cr_loss,
+            'kd_loss':kd_loss
+            },
+        global_step=self.global_step)
+        #log all three loses in 1 graph, each epoch
+        self.logger.experiment.add_scalars('loss_epoch',{
+            'total_loss':total_loss,
+            'cr_loss':cr_loss,
+            'kd_loss':kd_loss
+            },
+        global_step=self.current_epoch)
 
         self.log("train_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
-
-        #log all three loses in one graph
-
         self.log("train_kd_loss",kd_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("train_cr_loss",cr_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("train_total_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
@@ -535,6 +558,20 @@ class KnowledgeDistillationModule(pl.LightningModule):
         accuracy = self.accuracy(output_student,labels)
         mcc = self.mcc(output_student,labels)
 
+         #log all three loses in 1 graph, each step
+        self.logger.experiment.add_scalars('loss_step',{
+            'total_loss':total_loss,
+            'cr_loss':cr_loss,
+            'kd_loss':kd_loss
+            },
+        global_step=self.global_step)
+        #log all three loses in 1 graph, each epoch
+        self.logger.experiment.add_scalars('loss_epoch',{
+            'total_loss':total_loss,
+            'cr_loss':cr_loss,
+            'kd_loss':kd_loss
+            },
+        global_step=self.current_epoch)
 
         self.log("validation_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("validation_kd_loss",kd_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)

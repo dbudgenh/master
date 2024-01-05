@@ -22,6 +22,7 @@ NUM_WORKERS = 12
 def main():
     torch.set_float32_matmul_precision('medium')
     train_transform, valid_transform,version = old_transforms()
+    
     datamodule = BirdDataModule(root_dir='C:/Users/david/Desktop/Python/master/data',
                                 csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',
                                 train_transform=train_transform,
@@ -29,6 +30,7 @@ def main():
                                 batch_size=BATCH_SIZE,
                                 num_workers=NUM_WORKERS,
                                 collate_fn=None)
+    
     teacher = EfficientNet_V2_L.load_from_checkpoint(checkpoint_path=TEACHER_CHECKPOINT)
     student = EfficientNet_V2_S()
     kd_model= KnowledgeDistillationModule(student_model=student,
@@ -46,14 +48,14 @@ def main():
                                           T=TEMPERATURE,
                                           num_workers=NUM_WORKERS)
     
-    lr_monitor = LearningRateMonitor(logging_interval='step',
-                                     log_momentum=False)
+    lr_monitor = LearningRateMonitor(logging_interval='step')
+
     model_checkpoint = ModelCheckpoint(
                                        filename=f"{kd_model.name}_{version}_"+ "{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}",
                                        save_top_k=1,
-                                       save_weights_only=False,
                                        monitor="validation_loss",
                                        mode='min')
+    
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precision='bf16-mixed')
     trainer.fit(model=kd_model,datamodule=datamodule)#,ckpt_path=ckpt_path)
 
