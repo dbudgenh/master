@@ -19,6 +19,10 @@ import torch
 from torchvision.datasets import ImageFolder
 from torchvision.datasets.folder import default_loader
 import pickle
+from sklearn.model_selection import KFold
+from torch.utils.data import ConcatDataset
+from tqdm import tqdm
+from torch.utils.data import Subset
 
 class Split(Enum):
     TRAIN=1
@@ -65,7 +69,7 @@ class BirdDataset(Dataset):
         image = default_loader(img_path) #read_image(img_path) #output has shape (3,224,224)
         if self.transform:
             image = self.transform(image)
-        return image, class_id,img_path
+        return image, class_id
     
 class BirdDatasetNPZ(Dataset):
     """Dataset containing images of birds. The dataset gets stored in memory, by loading the .npz (numpy compressed file) file
@@ -237,3 +241,94 @@ class BirdDataModuleV2(BaseDataModule):
         return ImageFolder(root=self.root_dir + "/test" ,transform=self.valid_transform,)#target_transform=self._convert_label)
     def predict_data(self):
         return ImageFolder(root=self.root_dir + "/test" ,transform=self.valid_transform,)#target_transform=self._convert_label)
+    
+
+class ConcatImageFolder(Dataset):
+    def __init__(self,image_folders):
+        super().__init__()
+        self.image_folders = image_folders
+        self.index_ranges = self._compute_index_ranges()
+    
+    def _compute_index_ranges(self):
+        ranges = []
+        start = 0
+        for folder in self.image_folders:
+            end = start + len(folder)
+            ranges.append((start, end))
+            start = end
+        return ranges
+    
+    def _find_folder(self, index):
+        for start, end in self.index_ranges:
+            if start <= index < end:
+                folder_index = index - start
+                folder = self.image_folders[self.index_ranges.index((start, end))]
+                return folder, folder_index
+        raise IndexError("Index not found in any folders")
+
+    def __len__(self) -> int:
+        return sum(len(image_folder) for image_folder in self.image_folders)
+    
+    def __getitem__(self, indices):
+        if isinstance(indices, (int, np.integer)) or (isinstance(indices, torch.Tensor) and indices.ndim == 0):
+             indices = int(indices)
+             folder, folder_index = self._find_folder(indices)
+             return folder[folder_index]
+        if isinstance(indices, (list, np.ndarray,torch.Tensor)):
+            items = []
+            for idx in tqdm(indices):
+                folder, folder_index = self._find_folder(idx)
+                items.append(folder[folder_index])
+            return items
+        raise TypeError(f"Invalid index type. Must be int or array-like. We got {type(indices)}")
+        
+
+class KFoldDataModule(BaseDataModule):
+    def __init__(self,
+                 k,
+                 index,
+                 root_dir,
+                 train_transform,
+                 valid_transform,
+                 random_seed=123456789,
+                 batch_size=32,
+                 num_workers=2,
+                 collate_fn=None):
+        super().__init__(train_transform=train_transform,
+                         valid_transform=valid_transform,
+                         batch_size=batch_size,
+                         num_workers=num_workers,
+                         collate_fn=collate_fn)
+        self.k = k #Amount of folds
+        self.index = index #Index of current fold used for validation set
+        self.root_dir = root_dir #Root directory of dataset
+        self.random_seed = random_seed #For recreation purposes
+
+        #train_dataset = ImageFolder(root=self.root_dir + "/train" ,transform=self.train_transform,)
+        #valid_dataset = ImageFolder(root=self.root_dir + "/valid" ,transform=self.valid_transform,)
+        #test_dataset = ImageFolder(root=self.root_dir + "/test" ,transform=self.valid_transform,)
+        #total_dataset = ConcatImageFolder(image_folders=[train_dataset,valid_dataset])
+
+        total_dataset = ImageFolder(root=self.root_dir + '/cross_validation',transform=self.train_transform)
+
+        
+        kfold = KFold(n_splits=k,shuffle=True,random_state=random_seed)
+        all_splits = kfold.split(total_dataset)
+
+        train_indices,validation_indices = list(all_splits)[self.index]
+
+        self.data_train = Subset(total_dataset,train_indices)
+        self.data_train.dataset.transform = self.train_transform
+
+        self.data_validation = Subset(total_dataset,validation_indices)
+        self.data_validation.dataset.transform = self.valid_transform
+
+
+    def train_data(self):
+        return self.data_train
+    def valid_data(self):
+        return self.data_validation
+    def test_data(self):
+        return self.data_validation
+    def predict_data(self):
+       return self.data_validation

@@ -1,22 +1,30 @@
 import torch
 from cleanlab import Datalab
-from transformations import old_transforms
+from transformations import old_transforms,default_transforms,default_collate_fn
 from models import EfficientNet_V2_L
 from dataset import BirdDataset,Split
 from tqdm import tqdm
 from skorch import NeuralNetClassifier
 from cleanlab.filter import find_label_issues
-from torch.utils.data import DataLoader
+from dataset import BirdDataModuleV2
 
 
 BATCH_SIZE = 16
-checkpoint_path = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_L_Finetuned_Adam/epoch=28_validation_loss=0.0459_validation_accuracy=0.99_validation_mcc=0.99.ckpt'
+checkpoint_path = r"C:\Users\david\Desktop\Python\master\statistics\524_Classes\EfficientNet_V2_L_Finetuned_V2_SGD\version_2\checkpoints\EfficientNet_V2_L_Pretrained_fine_tune_V2_epoch=99_validation_loss=1.0096_validation_accuracy=0.99_validation_mcc=0.99.ckpt"
 def main():
     torch.set_float32_matmul_precision('medium')
-    
     train_transform, valid_transform,version = old_transforms()
-    bird_dataset = BirdDataset(root_dir='data',csv_file='data/birds.csv',transform=valid_transform,split=None)
-    data_loader = DataLoader(bird_dataset,batch_size = BATCH_SIZE,shuffle=False)
+    collate_fn = default_collate_fn()
+
+    datamodule = BirdDataModuleV2(root_dir='C:/Users/david/Desktop/Python/master/data',
+                                train_transform=train_transform,
+                                valid_transform=valid_transform,
+                                batch_size=BATCH_SIZE,
+                                num_workers=8,
+                                collate_fn=collate_fn)
+    datamodule.setup("test")
+    data_loader = datamodule.test_dataloader()
+
     model = EfficientNet_V2_L.load_from_checkpoint(checkpoint_path=checkpoint_path).to('cuda')
     model.eval()
 
@@ -29,10 +37,9 @@ def main():
         'image':[],
         'label':[]
     }
-
     with torch.no_grad():
         for batch_data in tqdm(data_loader):
-            images,labels,_ = batch_data
+            images,labels = batch_data
 
             dataset['image'].append(images)
             dataset['label'].append(labels)
@@ -57,7 +64,7 @@ def main():
     lab.find_issues(pred_probs = pred_probs.cpu().numpy(),features=all_features.cpu().numpy())
     lab.report()
 
-    print()
+
 
     # ranked_label_issues = find_label_issues(all_labels.numpy(),pred_probs.cpu().numpy(),return_indices_ranked_by="self_confidence",)
 

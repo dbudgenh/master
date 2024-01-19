@@ -36,7 +36,7 @@ All documents and code used for the master thesis are stored here
 - [x] KD review
 - [x] KD implementation (try pre-trained student model and from scratch)
 - [x] Compare transfer learning with model trainined from scratch
-- [ ] K-Fold (4,5) Cross-Validation
+- [x] K-Fold (4,5) Cross-Validation
 - [ ] Try Triplet-network
 - [ ] Try Siamese-network
 - [x] Try State-of-the-art network

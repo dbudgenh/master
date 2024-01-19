@@ -35,13 +35,11 @@ def main():
     collate_fn = default_collate_fn()
 
     datamodule = BirdDataModuleV2(root_dir='C:/Users/david/Desktop/Python/master/data',
-                                #csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',
                                 train_transform=train_transform,
                                 valid_transform=valid_transform,
                                 batch_size=BATCH_SIZE,
                                 num_workers=NUM_WORKERS,
                                 collate_fn=collate_fn)
-    
     model = EfficientNet_V2_S(lr=LEARNING_RATE,
                               weight_decay=WEIGHT_DECAY,
                               momentum=MOMENTUM,
@@ -55,6 +53,7 @@ def main():
                               epochs=EPOCHS,
                               num_workers=NUM_WORKERS,
                               optimizer_algorithm='sgd')
+    
     lr_monitor = LearningRateMonitor(logging_interval='step')
     model_checkpoint = ModelCheckpoint(
                                        filename=f"{model.name}_{version}_"+ "{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}", 
@@ -67,8 +66,6 @@ def main():
     trainer.fit(model=model,datamodule=datamodule)
     model.log_text_to_tensorboard('best_checkpoint_file_name',model_checkpoint.best_model_path)
 
-
-    
     #switching off inference for test
     #trainer.inference_mode = False
     #trainer.test_loop.inference_mode = False

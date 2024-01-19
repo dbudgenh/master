@@ -161,7 +161,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
 
     def setup(self, stage: str) -> None:
         self.logger._log_graph = True
-        self.logger.log_graph(model=self,input_array=torch.rand((1,3,176,176)).to('cuda'))
+        self.logger.log_graph(model=self,input_array=torch.rand((1,3,224,224)).to('cuda'))
 
 
     def configure_optimizers(self) -> Any:
@@ -487,10 +487,8 @@ class KnowledgeDistillationModule(pl.LightningModule):
     
     def training_step(self, batch,batch_idx):
         images, labels = batch
-
         #Teacher-model should be in evaluation mode (this turns off dropout etc)
         self.teacher_model.eval()
-
         #No gradient computation for teacher-model
         with torch.no_grad():  
              output_teacher = self.teacher_model(images)
@@ -498,6 +496,7 @@ class KnowledgeDistillationModule(pl.LightningModule):
         #Training mode for student-model, gradient computation should be ON
         output_student = self(images)
 
+        tqdm([1,2,3])
         #one-hot encoded (because of cutmix & mixup), convert to class label
         if labels.size(dim=-1) == NUM_CLASSES:
             labels = torch.argmax(labels,dim=1)
@@ -999,7 +998,6 @@ class Resnet_101(ImageClassifierBase):
                          num_workers=num_workers)
     def init_base_model(self):
         return resnet101(weights=None, num_classes=NUM_CLASSES)
-
 class NaiveClassifier(ImageClassifierBase):
     def __init__(self,lr=0.01,
                  weight_decay=0.00002,
@@ -1038,6 +1036,8 @@ class Naive(Module):
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(32, 64, 5)
         self.conv3 = nn.Conv2d(64, 32, 5)
+        # Adaptive pooling layer (so we can work with any input-shape)
+        #self.adaptive_pool = nn.AdaptiveAvgPool2d((1, 1))
 
         self.fc1 = nn.Linear(18432, 128)
         self.fc2 = nn.Linear(128, 64)
@@ -1047,6 +1047,9 @@ class Naive(Module):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = self.pool(F.relu(self.conv3(x)))
+
+        #x = self.adaptive_pool(x) #creates (1,1) features maps
+
         x = torch.flatten(x, 1) # flatten all dimensions except batch
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
