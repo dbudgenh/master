@@ -10,6 +10,7 @@ from dataset import BirdDataModuleV2
 
 
 BATCH_SIZE = 16
+NUM_WORKERS = 8
 checkpoint_path = r"C:\Users\david\Desktop\Python\master\statistics\524_Classes\EfficientNet_V2_L_Finetuned_V2_SGD\version_2\checkpoints\EfficientNet_V2_L_Pretrained_fine_tune_V2_epoch=99_validation_loss=1.0096_validation_accuracy=0.99_validation_mcc=0.99.ckpt"
 def main():
     torch.set_float32_matmul_precision('medium')
@@ -20,7 +21,7 @@ def main():
                                 train_transform=train_transform,
                                 valid_transform=valid_transform,
                                 batch_size=BATCH_SIZE,
-                                num_workers=8,
+                                num_workers=NUM_WORKERS,
                                 collate_fn=collate_fn)
     datamodule.setup("test")
     data_loader = datamodule.test_dataloader()
@@ -60,6 +61,8 @@ def main():
 
     unequal_indices = torch.nonzero(all_labels != all_predictions.cpu(),as_tuple=False)
 
+
+    
     lab = Datalab(data=dataset, label_name="label", image_key="image")
     lab.find_issues(pred_probs = pred_probs.cpu().numpy(),features=all_features.cpu().numpy())
     lab.report()

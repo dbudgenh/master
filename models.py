@@ -758,6 +758,7 @@ class EfficientNetPretrainedBase(ImageClassifierBase):
         
         #Change final classification layer
         #This is necessary, because a pre-trained network is pre-trained on imagenet with 1000 classes
+        #The final layer will only be trained
         in_features =self.model.classifier[1].in_features
         self.model.classifier[1] = nn.Linear(in_features=in_features,out_features=NUM_CLASSES)
 
@@ -932,7 +933,9 @@ class Resnet_18(ImageClassifierBase):
                          optimizer_algorithm=optimizer_algorithm,
                          num_workers=num_workers)
     def init_base_model(self):
-        return resnet18(weights=None,num_classes=NUM_CLASSES)  
+        return resnet18(weights=None,num_classes=NUM_CLASSES)
+
+
 class Resnet_18_Dropout(ImageClassifierBase):
     def __init__(self,dropout,
                  lr=0.01,
