@@ -23,6 +23,8 @@ from sklearn.model_selection import KFold
 from torch.utils.data import ConcatDataset
 from tqdm import tqdm
 from torch.utils.data import Subset
+import random
+from collections import Counter
 
 class Split(Enum):
     TRAIN=1
@@ -95,6 +97,7 @@ class BirdDatasetNPZ(Dataset):
         if self.transform:
             image = self.transform(image)
         return image,label
+
     
 class BaseDataModule(ABC,pl.LightningDataModule):
     """Base class for all the data modules, this class should never be instantiate directly, but inherited from.
@@ -133,7 +136,10 @@ class BaseDataModule(ABC,pl.LightningDataModule):
         if stage == 'predict':
             print(f"Calling stage {stage} (predict)")
             self.predicting_data = self.predict_data()
+
     
+
+
     def train_dataloader(self):
         return DataLoader(dataset=self.training_data, 
                           batch_size=self.batch_size, 
@@ -175,6 +181,56 @@ class BaseDataModule(ABC,pl.LightningDataModule):
                           persistent_workers=False if self.num_workers == 0 else True
                           )
 
+class UnderSampledOwnSplit(BaseDataModule):
+    def __init__(self,
+                 train_transform,
+                 valid_transform,
+                 train_data_percentage=0.9,
+                 random_seed=42,
+                 batch_size=32,
+                 num_workers=4):
+        super().__init__(train_transform=train_transform,
+                         valid_transform=valid_transform,
+                         batch_size=batch_size,
+                         num_workers=num_workers)
+        
+        self.random_seed = random_seed #For recreation purposes
+        random.seed(random_seed)
+        total_dataset = ImageFolder(root='cross_validation',
+                                    transform=None)
+        total_targets = total_dataset.targets
+        sum_per_target = Counter(total_targets)
+        min_samples_per_class = min(sum_per_target.values())
+        sorted_sum_per_target = dict(sorted(sum_per_target.items(), 
+                                            key=lambda item: item[0]))
+        train_indices, valid_indices = [],[]
+        for classid, targetsum in sorted_sum_per_target.items():
+            indices_for_class = [i for i, target in enumerate(total_targets) \
+                                 if target == classid]
+            rand_indices = random.sample(indices_for_class, min_samples_per_class)
+            chunk_sizes = np.multiply([train_data_percentage, 1-train_data_percentage],\
+                                       min_samples_per_class).astype(int)
+            train_class_indices, valid_class_indices = \
+            np.split(rand_indices, np.cumsum(chunk_sizes)[:-1])
+            train_indices.extend(train_class_indices)
+            valid_indices.extend(valid_class_indices)
+
+        self.data_train = Subset(total_dataset,train_indices)
+        self.data_train.dataset.transform = self.train_transform
+
+        self.data_validation = Subset(total_dataset,valid_indices)
+        self.data_validation.dataset.transform = self.valid_transform
+
+    def train_data(self):
+        return self.data_train
+    def valid_data(self):
+        return self.data_validation
+    def test_data(self):
+        return ImageFolder(root="test" ,transform=self.valid_transform)
+    def predict_data(self):
+        return ImageFolder(root="test" ,transform=self.valid_transform)
+    
+
 class BirdDataNPZModule(BaseDataModule):
     def __init__(self,train_npz_path,valid_npz_path,test_npz_path,train_transform,valid_transform,batch_size=32,num_workers=2,collate_fn=None):
         super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers,collate_fn=collate_fn)
@@ -199,8 +255,6 @@ class BirdDataNPZModule(BaseDataModule):
     def predict_data(self):
         return self.predict
 
-
-
 class BirdDataModule(BaseDataModule):
     def __init__(self,root_dir,csv_file,train_transform,valid_transform,batch_size=32,num_workers=2,collate_fn=None):
         super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers,collate_fn=collate_fn)
@@ -220,19 +274,6 @@ class BirdDataModuleV2(BaseDataModule):
     def __init__(self,root_dir,train_transform,valid_transform,batch_size=32,num_workers=2,collate_fn=None):
         super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers,collate_fn=collate_fn)
         self.root_dir = root_dir
-        #self.mappings = self._load_dict('mappings.pkl')
-
-    # def _load_dict(self,file_name):
-    #     with open(file_name, 'rb') as f:
-    #         return pickle.load(f)
-    
-    #     """The labels for the classes are sorted aphabetically by bird name. This is different from the bird.csv file
-    #        To keep the labels consistent, we map the labels to that of the birds.csv file
-    #     """
-    # def _convert_label(self,label):
-    #     return self.mappings[label]
-
-
     def train_data(self):
         return ImageFolder(root=self.root_dir + "/train" ,transform=self.train_transform,)#target_transform=self._convert_label)
     def valid_data(self):
@@ -241,52 +282,10 @@ class BirdDataModuleV2(BaseDataModule):
         return ImageFolder(root=self.root_dir + "/test" ,transform=self.valid_transform,)#target_transform=self._convert_label)
     def predict_data(self):
         return ImageFolder(root=self.root_dir + "/test" ,transform=self.valid_transform,)#target_transform=self._convert_label)
-    
-
-class ConcatImageFolder(Dataset):
-    def __init__(self,image_folders):
-        super().__init__()
-        self.image_folders = image_folders
-        self.index_ranges = self._compute_index_ranges()
-    
-    def _compute_index_ranges(self):
-        ranges = []
-        start = 0
-        for folder in self.image_folders:
-            end = start + len(folder)
-            ranges.append((start, end))
-            start = end
-        return ranges
-    
-    def _find_folder(self, index):
-        for start, end in self.index_ranges:
-            if start <= index < end:
-                folder_index = index - start
-                folder = self.image_folders[self.index_ranges.index((start, end))]
-                return folder, folder_index
-        raise IndexError("Index not found in any folders")
-
-    def __len__(self) -> int:
-        return sum(len(image_folder) for image_folder in self.image_folders)
-    
-    def __getitem__(self, indices):
-        if isinstance(indices, (int, np.integer)) or (isinstance(indices, torch.Tensor) and indices.ndim == 0):
-             indices = int(indices)
-             folder, folder_index = self._find_folder(indices)
-             return folder[folder_index]
-        if isinstance(indices, (list, np.ndarray,torch.Tensor)):
-            items = []
-            for idx in tqdm(indices):
-                folder, folder_index = self._find_folder(idx)
-                items.append(folder[folder_index])
-            return items
-        raise TypeError(f"Invalid index type. Must be int or array-like. We got {type(indices)}")
-        
 
 class KFoldDataModule(BaseDataModule):
     def __init__(self,
                  k,
-                 index,
                  root_dir,
                  train_transform,
                  valid_transform,
@@ -300,29 +299,32 @@ class KFoldDataModule(BaseDataModule):
                          num_workers=num_workers,
                          collate_fn=collate_fn)
         self.k = k #Amount of folds
-        self.index = index #Index of current fold used for validation set
         self.root_dir = root_dir #Root directory of dataset
         self.random_seed = random_seed #For recreation purposes
-
-        #train_dataset = ImageFolder(root=self.root_dir + "/train" ,transform=self.train_transform,)
-        #valid_dataset = ImageFolder(root=self.root_dir + "/valid" ,transform=self.valid_transform,)
-        #test_dataset = ImageFolder(root=self.root_dir + "/test" ,transform=self.valid_transform,)
-        #total_dataset = ConcatImageFolder(image_folders=[train_dataset,valid_dataset])
-
-        total_dataset = ImageFolder(root=self.root_dir + '/cross_validation',transform=self.train_transform)
-
+        self.total_dataset = ImageFolder(root=self.root_dir +
+                                     '/cross_validation',
+                                     transform=self.train_transform)
         
-        kfold = KFold(n_splits=k,shuffle=True,random_state=random_seed)
-        all_splits = kfold.split(total_dataset)
+        kfold = KFold(n_splits=k,
+                      shuffle=True,
+                      random_state=random_seed)
+        self.all_splits = kfold.split(self.total_dataset)
 
-        train_indices,validation_indices = list(all_splits)[self.index]
+    def __iter__(self):
+        return self
 
-        self.data_train = Subset(total_dataset,train_indices)
-        self.data_train.dataset.transform = self.train_transform
+    def __next__(self):
+        try:
+            train_indices,validation_indices = next(self.all_splits)
+            self.data_train = Subset(self.total_dataset,train_indices)
+            self.data_train.dataset.transform = self.train_transform
 
-        self.data_validation = Subset(total_dataset,validation_indices)
-        self.data_validation.dataset.transform = self.valid_transform
-
+            self.data_validation = Subset(self.total_dataset,
+                                        validation_indices)
+            self.data_validation.dataset.transform = self.valid_transform
+            return self
+        except StopIteration:
+            raise StopIteration("All K-Fold splits have been processed")
 
     def train_data(self):
         return self.data_train
@@ -332,3 +334,5 @@ class KFoldDataModule(BaseDataModule):
         return self.data_validation
     def predict_data(self):
        return self.data_validation
+    
+

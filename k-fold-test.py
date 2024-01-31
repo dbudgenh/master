@@ -18,23 +18,22 @@ def main():
     model = NaiveClassifier(
         lr=LEARNING_RATE,
         batch_size=BATCH_SIZE,
-        )
-    for index in range(k):
-        print(f"Cross validation index: {index}/{k}")
-        datamodule = KFoldDataModule(k=k,
-                                    index=index,
+    )
+    datamodule = KFoldDataModule(k=k,
                                     root_dir='C:/Users/david/Desktop/Python/master/data',
                                     collate_fn=collate_fn,
                                     num_workers=NUM_WORKERS,
                                     batch_size=BATCH_SIZE,
                                     train_transform=train_transform,
                                     valid_transform=valid_trainsform)
+    for kfold_datamodule in datamodule:
         trainer = pl.Trainer(max_epochs=EPOCHS,
                              num_sanity_val_steps=0,
                             precision='bf16-mixed') #
         
         trainer.fit(model=model,
-                    datamodule=datamodule)
+                    datamodule=kfold_datamodule)
+    
 
 if __name__ == "__main__":
     main()
