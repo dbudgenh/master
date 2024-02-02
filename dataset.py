@@ -2,34 +2,50 @@ from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADER
 from torch.utils.data import Dataset
 import pandas as pd
 import os
-from skimage import io
 from enum import Enum
-from PIL import Image
 from numpy import asarray
 import torchvision
 torchvision.disable_beta_transforms_warning()
-from torchvision.io import read_image
 import numpy as np
 import pytorch_lightning as pl
-from torchvision.transforms import transforms
-from torchvision.transforms.v2 import AugMix
 from torch.utils.data import DataLoader
 from abc import ABC,abstractmethod
 import torch
 from torchvision.datasets import ImageFolder
 from torchvision.datasets.folder import default_loader
-import pickle
 from sklearn.model_selection import KFold
-from torch.utils.data import ConcatDataset
-from tqdm import tqdm
-from torch.utils.data import Subset
-import random
+from collections import defaultdict
+from random import sample
 from collections import Counter
+import random
 
 class Split(Enum):
     TRAIN=1
     TEST=2
     VALID=3
+
+class Subset(Dataset):
+    """Subset of a dataset at specified indices
+
+    Args:
+        dataset (Dataset): The whole dataset
+        indices (Sequence): Indices in the whole set selected for subset
+        transform: transformations
+    """
+
+    def __init__(self,dataset,indices,transform):
+        self.dataset = dataset
+        self.indices = indices
+        self.transform = transform
+
+    def __getitem__(self, idx):
+        imgs, labels = self.dataset.__getitem__(self.indices[idx])
+        if self.transform:
+            return self.transform(imgs),labels
+        return imgs,labels
+    
+    def __len__(self):
+        return len(self.indices)
 
 class BirdDataset(Dataset):
     """ Dataset containing images of birds
@@ -181,11 +197,73 @@ class BaseDataModule(ABC,pl.LightningDataModule):
                           persistent_workers=False if self.num_workers == 0 else True
                           )
 
-class UnderSampledOwnSplit(BaseDataModule):
+class UndersampleMinimumDataset(Dataset):
+    """
+    A PyTorch Dataset class that performs undersampling on an input dataset.
+
+    This class is designed to handle class imbalance in datasets.
+    It takes an existing dataset,  and creates a new dataset 
+    where each class has an equal number of samples.
+
+    The number of samples per class in the new dataset = number of samples in the 
+    least represented class in the original dataset.
+    """
+    
+    def __init__(self,
+                 dataset:Dataset,
+                 transform = None):
+        super(UndersampleMinimumDataset,self).__init__()
+        self.dataset = dataset #original dataset
+        self.transform = transform #transformations to apply to undersampled dataset
+        self.indices = self._undersample_indices(dataset)
+        self.undersampled_dataset = Subset(
+            dataset=self.dataset,
+            indices=self.indices,
+            transform=self.transform
+        )
+
+    def _undersample_indices(self, dataset: Dataset) -> list[int]:
+        # Count samples and store indices for each class
+        class_indices = defaultdict(list)
+        if dataset.targets:
+            #for each class label, the amount of images
+            sum_per_target = Counter(dataset.targets)
+            min_count = min(sum_per_target.values())
+            sorted_sum_per_target = dict(sorted(sum_per_target.items(), key=lambda item: item[0]))
+            
+            indices = []
+            for class_id, amount_of_images in sorted_sum_per_target.items():
+                indices_for_class = [i for i, target in enumerate(dataset.targets) if target == class_id]
+                rand_indices = random.sample(indices_for_class, min_count)
+                indices.extend(rand_indices)
+            return indices
+        else:
+            for idx in range(len(dataset)):
+                _, label = dataset[idx]
+                class_indices[label].append(idx)
+
+            # Find the minimum count across classes
+            min_count = min(len(indices) for indices in class_indices.values())
+
+            # Select indices to equalize class distribution
+            undersampled_indices = []
+            for indices in class_indices.values():
+                undersampled_indices.extend(sample(indices, min_count))
+
+            return undersampled_indices
+
+    def __len__(self) -> int:
+        return len(self.undersampled_dataset)
+    
+    def __getitem__(self, idx):
+       return self.undersampled_dataset.__getitem__(idx)
+       
+class SplitDatamodule(BaseDataModule):
     def __init__(self,
                  train_transform,
                  valid_transform,
-                 train_data_percentage=0.9,
+                 total_dataset,
+                 train_data_split_percentage=0.9,
                  random_seed=42,
                  batch_size=32,
                  num_workers=4):
@@ -193,33 +271,38 @@ class UnderSampledOwnSplit(BaseDataModule):
                          valid_transform=valid_transform,
                          batch_size=batch_size,
                          num_workers=num_workers)
-        
+        self.train_data_percentage = train_data_split_percentage
+
         self.random_seed = random_seed #For recreation purposes
-        random.seed(random_seed)
-        total_dataset = ImageFolder(root='cross_validation',
-                                    transform=None)
-        total_targets = total_dataset.targets
-        sum_per_target = Counter(total_targets)
-        min_samples_per_class = min(sum_per_target.values())
-        sorted_sum_per_target = dict(sorted(sum_per_target.items(), 
-                                            key=lambda item: item[0]))
-        train_indices, valid_indices = [],[]
-        for classid, targetsum in sorted_sum_per_target.items():
-            indices_for_class = [i for i, target in enumerate(total_targets) \
-                                 if target == classid]
-            rand_indices = random.sample(indices_for_class, min_samples_per_class)
-            chunk_sizes = np.multiply([train_data_percentage, 1-train_data_percentage],\
-                                       min_samples_per_class).astype(int)
-            train_class_indices, valid_class_indices = \
-            np.split(rand_indices, np.cumsum(chunk_sizes)[:-1])
-            train_indices.extend(train_class_indices)
-            valid_indices.extend(valid_class_indices)
+        self.data_train, self.data_validation = self._split_dataset(total_dataset,
+                                                                    self.train_data_percentage)
+    def _split_dataset(self,
+                       dataset:Dataset,
+                       train_data_percentage:float) -> (Subset,Subset):
+        # Set the random seed for reproducibility
+        torch.manual_seed(self.random_seed)
 
-        self.data_train = Subset(total_dataset,train_indices)
-        self.data_train.dataset.transform = self.train_transform
+        # Calculate the number of samples for training and validation
+        total_size = len(dataset)
+        train_size = int(total_size * train_data_percentage)
+        validation_size = total_size - train_size
 
-        self.data_validation = Subset(total_dataset,valid_indices)
-        self.data_validation.dataset.transform = self.valid_transform
+        indices = torch.randomperm(total_size).tolist()
+
+        train_indices = indices[:train_size]
+        validation_indices = indices[train_size:train_size+validation_size]
+
+        train_dataset = Subset(
+            dataset=dataset,
+            indices=train_indices,
+            transform=self.train_transform
+        )
+        validation_dataset = Subset(
+            dataset=dataset,
+            indices=validation_indices,
+            transform=self.valid_transform
+        )
+        return train_dataset, validation_dataset
 
     def train_data(self):
         return self.data_train
@@ -286,7 +369,7 @@ class BirdDataModuleV2(BaseDataModule):
 class KFoldDataModule(BaseDataModule):
     def __init__(self,
                  k,
-                 root_dir,
+                 total_dataset,
                  train_transform,
                  valid_transform,
                  random_seed=123456789,
@@ -299,11 +382,8 @@ class KFoldDataModule(BaseDataModule):
                          num_workers=num_workers,
                          collate_fn=collate_fn)
         self.k = k #Amount of folds
-        self.root_dir = root_dir #Root directory of dataset
         self.random_seed = random_seed #For recreation purposes
-        self.total_dataset = ImageFolder(root=self.root_dir +
-                                     '/cross_validation',
-                                     transform=self.train_transform)
+        self.total_dataset = total_dataset
         
         kfold = KFold(n_splits=k,
                       shuffle=True,
@@ -316,12 +396,15 @@ class KFoldDataModule(BaseDataModule):
     def __next__(self):
         try:
             train_indices,validation_indices = next(self.all_splits)
-            self.data_train = Subset(self.total_dataset,train_indices)
-            self.data_train.dataset.transform = self.train_transform
-
-            self.data_validation = Subset(self.total_dataset,
-                                        validation_indices)
-            self.data_validation.dataset.transform = self.valid_transform
+            self.data_train = Subset(
+                dataset=self.total_dataset,
+                indices=train_indices,
+                transform=self.train_transform
+            )
+            self.data_validation = Subset(
+                dataset = self.total_dataset,
+                indices = validation_indices,
+                transform = self.valid_transform)
             return self
         except StopIteration:
             raise StopIteration("All K-Fold splits have been processed")
