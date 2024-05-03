@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch 
 import torch.nn.functional as F
 from torch.nn.modules import Module
-from torchvision.models import efficientnet_b0,efficientnet_v2_s,efficientnet_v2_m,efficientnet_v2_l,EfficientNet_V2_S_Weights,EfficientNet_V2_M_Weights,EfficientNet_B0_Weights,EfficientNet_V2_L_Weights
+from torchvision.models import efficientnet_b0,efficientnet_v2_s,efficientnet_v2_m,efficientnet_v2_l,vit_l_16,EfficientNet_V2_S_Weights,EfficientNet_V2_M_Weights,EfficientNet_B0_Weights,EfficientNet_V2_L_Weights,ViT_L_16_Weights
 from torchvision.models import resnet18,resnet101
 from torchvision.models import vit_b_16,ViT_B_16_Weights
 import pytorch_lightning as pl
@@ -37,7 +37,9 @@ TOP_K = 10
 
 
 class ImageClassifierBase(ABC,pl.LightningModule):
-    def __init__(self,lr=0.1,
+    def __init__(self,
+                 base_model:Module,
+                 lr=0.1,
                  batch_size=32,
                  epochs=150,
                  momentum=0.9,
@@ -51,10 +53,9 @@ class ImageClassifierBase(ABC,pl.LightningModule):
                  optimizer_algorithm='sgd',
                  num_workers=0,
                  log_config= None,
-                 model = None
                  ):
         super().__init__()
-        self.model = self.init_base_model()
+        self.model = base_model
         self.lr = lr
         self.momentum = momentum
         self.weight_decay = weight_decay
@@ -69,6 +70,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.lr_warmup_decay = lr_warmup_decay
         self.norm_weight_decay = norm_weight_decay
         self.name = self.__class__.__name__
+        self.log_config = log_config
         
 
         self.accuracy = Accuracy(task="multiclass", num_classes=NUM_CLASSES)
@@ -84,7 +86,10 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.test_step_input = []
 
 
-        self.log_config = {
+        
+
+        if not self.log_config:
+            self.log_config = {
             'confusion_matrix':True,
             'roc_curve':True,
             'auroc':True,
@@ -94,10 +99,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
             'topk':True,
             'bottomk':True,
             'randomk':True
-        }
-
-        if log_config:
-            self.log_config.update(log_config)
+            }
 
         self.save_hyperparameters({
             'lr':self.lr,
@@ -117,15 +119,8 @@ class ImageClassifierBase(ABC,pl.LightningModule):
             })
         
 
-    @abstractmethod
-    def init_base_model(self) -> nn.Module:
-        pass
-
-    def forward(self,x,is_feat=False):
-        if is_feat:
-            out = self.model(x,is_feat)
-        else:
-            out = self.model(x)
+    def forward(self,x):
+        out = self.model(x)
         return out
     
     def freeze_layers(self):
@@ -161,7 +156,8 @@ class ImageClassifierBase(ABC,pl.LightningModule):
 
     def setup(self, stage: str) -> None:
         self.logger._log_graph = True
-        self.logger.log_graph(model=self,input_array=torch.rand((1,3,224,224)).to('cuda'))
+        print("Print computation graph")
+        #self.logger.log_graph(model=self,input_array=torch.rand((1,3,224,224)).to('cuda'))
 
 
     def configure_optimizers(self) -> Any:
@@ -383,62 +379,55 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.test_step_label.clear()
         self.test_step_input.clear()
 
-class KnowledgeDistillationModule(pl.LightningModule):
+class OfflineResponseBasedDistillation(ImageClassifierBase):
     def __init__(self,student_model,
                  teacher_model,
                  lr=0.1,
+                 batch_size=32,
                  momentum=0.9,
                  weight_decay=2e-5,
                  norm_weight_decay=0.0,
-                 batch_size=32,
+                 label_smoothing=0.0,
                  lr_scheduler='cosineannealinglr',
                  lr_warmup_epochs=5,
                  lr_warmup_method='linear',
                  lr_warmup_decay=0.01,
                  optimizer_algorithm='sgd',
                  num_workers=0,
+                 log_config=None,
                  epochs=150,
                  alpha=0.95,
                  T=3.5):
+        
+        super().__init__(
+            base_model=student_model,
+            lr=lr,
+            batch_size=batch_size,
+            epochs=epochs,
+            momentum=momentum,
+            weight_decay=weight_decay,
+            norm_weight_decay=norm_weight_decay,
+            label_smoothing=label_smoothing,
+            lr_scheduler=lr_scheduler,
+            lr_warmup_epochs=lr_warmup_epochs,
+            lr_warmup_method=lr_warmup_method,
+            lr_warmup_decay=lr_warmup_decay,
+            optimizer_algorithm=optimizer_algorithm,
+            num_workers=num_workers,
+            log_config=log_config,
+        )
         self.student_model = student_model
         self.teacher_model = teacher_model
         #gradient computation not needed for teacher model!
         self.teacher_model.freeze_layers()
-        self.lr = lr
-        self.weight_decay = weight_decay
-        self.momentum = momentum
-        self.norm_weight_decay = norm_weight_decay
-        self.batch_size = batch_size
-        self.lr_scheduler = lr_scheduler
-        self.lr_warmup_epochs = lr_warmup_epochs
-        self.lr_warmup_method = lr_warmup_method
-        self.lr_warmup_decay = lr_warmup_decay
-        self.optimizer_algorithm = optimizer_algorithm
-        self.num_workers = num_workers
-        self.epochs = epochs
         self.alpha = alpha
         self.T = T
-        self.name = f'{self.student_model.name}_{self.teacher_model.name}_alpha={self.alpha}_T={self.T}'
-        self.accuracy = Accuracy(task="multiclass", num_classes=NUM_CLASSES)
-        self.mcc = MatthewsCorrCoef(task="multiclass",num_classes=NUM_CLASSES)
+        self.name = f'Offline_Response_Based{self.student_model.name}_{self.teacher_model.name}_alpha={self.alpha}_T={self.T}'
 
         self.save_hyperparameters({
-            'lr':self.lr,
-            'momentum':self.momentum,
-            'weight_decay':self.weight_decay,
-            'batch_size':self.batch_size,
-            'label_smoothing':self.label_smoothing,
-            'lr_scheduler':self.lr_scheduler,
-            'lr_warmup_epochs':self.lr_warmup_epochs,
-            'lr_warmup_method':self.lr_warmup_method,
-            'optimizer_algorithm':self.optimizer_algorithm,
-            'num_workers':self.num_workers,
-            'epochs':self.epochs,
-            'lr_warmup_decay':self.lr_warmup_decay,
-            'norm_weight_decay':self.norm_weight_decay,
-            'name':self.name,
             'alpha':self.alpha,
             'T':self.T,
+            'name':self.name
         })
 
         #add hyperparameters of each model to the hparams dict of the KD class
@@ -448,42 +437,6 @@ class KnowledgeDistillationModule(pl.LightningModule):
         for key in self.teacher_model.hparams:
             self.save_hyperparameters({f"teacher_{key}":self.teacher_model.hparams[key]})
 
-    def forward(self, x) -> Any:
-        out = self.student_model(x)
-        return out
-
-    def configure_optimizers(self) -> Any:
-        parameters = utils.set_weight_decay(
-            self,
-            self.weight_decay,
-            self.norm_weight_decay,
-            None
-        )
-        if self.optimizer_algorithm == 'sgd':
-            optimizer = SGD(parameters,lr=self.lr,momentum=self.momentum,weight_decay=self.weight_decay)
-        elif self.optimizer_algorithm == 'adam':
-            optimizer = AdamW(parameters,lr=self.lr,weight_decay=self.weight_decay)
-        else:
-            raise RuntimeError(
-                f"Invalid optimizer algorithm '{self.lr_scheduler}'. Only sgd or adam is supported."
-            )
-        if self.lr_scheduler == 'cosineannealinglr':
-            scheduler = CosineAnnealingLR(optimizer, T_max=self.epochs - self.lr_warmup_epochs)
-        else:
-            raise RuntimeError(
-                f"Invalid lr scheduler '{self.lr_scheduler}'. Only cosineannealinglr is supported."
-            )
-        if self.lr_warmup_epochs > 0:
-            if self.lr_warmup_method == 'linear':
-                warmup_lr_scheduler = LinearLR(optimizer, start_factor=self.lr_warmup_decay, total_iters=self.lr_warmup_epochs)
-            else:
-                raise RuntimeError(
-                f"Invalid lr warmup method '{self.lr_warmup_method}'. Only linear is supported."
-            )
-            lr_scheduler = SequentialLR(optimizer,schedulers=[warmup_lr_scheduler,scheduler],milestones=[self.lr_warmup_epochs])
-        else :
-            lr_scheduler = scheduler
-        return [optimizer],[{"scheduler": lr_scheduler,'interval':'epoch'}] 
     
     def training_step(self, batch,batch_idx):
         images, labels = batch
@@ -495,8 +448,6 @@ class KnowledgeDistillationModule(pl.LightningModule):
 
         #Training mode for student-model, gradient computation should be ON
         output_student = self(images)
-
-        tqdm([1,2,3])
         #one-hot encoded (because of cutmix & mixup), convert to class label
         if labels.size(dim=-1) == NUM_CLASSES:
             labels = torch.argmax(labels,dim=1)
@@ -531,6 +482,7 @@ class KnowledgeDistillationModule(pl.LightningModule):
             },
         global_step=self.current_epoch)
 
+        
         self.log("train_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("train_kd_loss",kd_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("train_cr_loss",cr_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
@@ -605,9 +557,9 @@ class KnowledgeDistillationModule(pl.LightningModule):
         self.log("test_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("test_mcc",mcc,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         return total_loss
-
 class EfficientNet_B0(ImageClassifierBase):
-    def __init__(self,lr=0.1,
+    def __init__(self,
+                 lr=0.1,
                  weight_decay=0.00002,
                  batch_size=32,
                  momentum=0.9,
@@ -619,8 +571,12 @@ class EfficientNet_B0(ImageClassifierBase):
                  epochs=150,
                  norm_weight_decay=0.0,
                  optimizer_algorithm='sgd',
-                 num_workers=0):
+                 num_workers=0,
+                 log_config=None
+                 ):
         super().__init__(lr=lr,
+                         log_config=log_config,
+                         base_model=efficientnet_b0(weights=None, num_classes=NUM_CLASSES),
                          batch_size=batch_size,
                          epochs=epochs,
                          weight_decay=weight_decay,
@@ -633,8 +589,6 @@ class EfficientNet_B0(ImageClassifierBase):
                          lr_warmup_decay=lr_warmup_decay,
                          optimizer_algorithm=optimizer_algorithm,
                          num_workers=num_workers)
-    def init_base_model(self):
-        return efficientnet_b0(weights=None, num_classes=NUM_CLASSES)   
 class EfficientNet_V2_S(ImageClassifierBase):
     def __init__(self,lr=0.1,
                  weight_decay=0.00002,
@@ -648,8 +602,11 @@ class EfficientNet_V2_S(ImageClassifierBase):
                  epochs=150,
                  norm_weight_decay=0.0,
                  optimizer_algorithm='sgd',
+                 log_config=None,
                  num_workers=0):
         super().__init__(lr=lr,
+                        log_config=log_config,
+                         base_model=efficientnet_v2_s(weights=None, num_classes=NUM_CLASSES),
                          batch_size=batch_size,
                          epochs=epochs,
                          weight_decay=weight_decay,
@@ -662,8 +619,6 @@ class EfficientNet_V2_S(ImageClassifierBase):
                          lr_warmup_decay=lr_warmup_decay,
                          optimizer_algorithm=optimizer_algorithm,
                          num_workers=num_workers)
-    def init_base_model(self):
-        return efficientnet_v2_s(weights=None, num_classes=NUM_CLASSES)
 class EfficientNet_V2_M(ImageClassifierBase):
     def __init__(self,lr=0.01,
                  weight_decay=0.00002,
@@ -677,8 +632,11 @@ class EfficientNet_V2_M(ImageClassifierBase):
                  epochs=150,
                  norm_weight_decay=0.0,
                  optimizer_algorithm='sgd',
+                    log_config=None,
                  num_workers=0):
         super().__init__(lr=lr,
+                        base_model=efficientnet_v2_m(weights=None, num_classes=NUM_CLASSES),
+                         log_config=log_config,
                          batch_size=batch_size,
                          epochs=epochs,
                          weight_decay=weight_decay,
@@ -691,8 +649,6 @@ class EfficientNet_V2_M(ImageClassifierBase):
                          lr_warmup_decay=lr_warmup_decay,
                          optimizer_algorithm=optimizer_algorithm,
                          num_workers=num_workers)
-    def init_base_model(self):
-        return efficientnet_v2_m(weights=None, num_classes=NUM_CLASSES)
 class EfficientNet_V2_L(ImageClassifierBase):
     def __init__(self,lr=0.01,
                  weight_decay=0.00002,
@@ -706,8 +662,11 @@ class EfficientNet_V2_L(ImageClassifierBase):
                  epochs=150,
                  norm_weight_decay=0.0,
                  optimizer_algorithm='sgd',
+                    log_config=None,
                  num_workers=0):
         super().__init__(lr=lr,
+                        base_model=efficientnet_v2_l(weights=None, num_classes=NUM_CLASSES),
+                         log_config=log_config,
                          batch_size=batch_size,
                          epochs=epochs,
                          weight_decay=weight_decay,
@@ -720,14 +679,12 @@ class EfficientNet_V2_L(ImageClassifierBase):
                          lr_warmup_decay=lr_warmup_decay,
                          optimizer_algorithm=optimizer_algorithm,
                          num_workers=num_workers)
-    def init_base_model(self):
-        return efficientnet_v2_l(weights=None, num_classes=NUM_CLASSES)
-    
 class EfficientNetPretrainedBase(ImageClassifierBase):
     def __init__(self,
-                 lr,
-                 batch_size,
-                 epochs,
+                 base_model,
+                 lr=0.01,
+                 batch_size=32,
+                 epochs=150,
                  weight_decay=2e-5,
                  momentum=0.9,
                  norm_weight_decay=0.0,
@@ -737,8 +694,11 @@ class EfficientNetPretrainedBase(ImageClassifierBase):
                  lr_warmup_method='linear',
                  lr_warmup_decay=0.01,
                  optimizer_algorithm='sgd',
+                 log_config=None,
                  num_workers=0):
         super().__init__(lr=lr,
+                         base_model=base_model,
+                         log_config=log_config,
                         batch_size=batch_size,
                         momentum=momentum,
                         epochs=epochs,
@@ -755,7 +715,6 @@ class EfficientNetPretrainedBase(ImageClassifierBase):
         print(f"\ttraining_mode={self.training_mode}")
         self.freeze_layers()
         self.name = self.name + "_" + self.training_mode
-        
         #Change final classification layer
         #This is necessary, because a pre-trained network is pre-trained on imagenet with 1000 classes
         #The final layer will only be trained
@@ -808,9 +767,9 @@ class EfficientNetPretrainedBase(ImageClassifierBase):
             return [optimizer],[{"scheduler": lr_scheduler,'interval':'epoch'}]      
 class EfficientNet_V2_S_Pretrained(EfficientNetPretrainedBase):
     def __init__(self,
-                 lr,
-                 batch_size,
-                 epochs,
+                 lr=0.01,
+                 batch_size=32,
+                 epochs=150,
                  momentum=0.9,
                  weight_decay=2e-5,
                  training_mode='pre_train',
@@ -820,8 +779,11 @@ class EfficientNet_V2_S_Pretrained(EfficientNetPretrainedBase):
                  lr_warmup_method='linear',
                  lr_warmup_decay=0,
                  optimizer_algorithm='sgd',
+                 log_config=None,
                  num_workers=0):
-        super().__init__(lr=lr,
+        super().__init__(
+                        base_model=efficientnet_v2_s(weights=EfficientNet_V2_S_Weights.DEFAULT),
+                        lr=lr,
                          weight_decay=weight_decay,
                          batch_size=batch_size,
                          momentum=momentum,
@@ -833,14 +795,13 @@ class EfficientNet_V2_S_Pretrained(EfficientNetPretrainedBase):
                          lr_warmup_method=lr_warmup_method,
                          lr_warmup_decay=lr_warmup_decay,
                          optimizer_algorithm=optimizer_algorithm,
+                         log_config=log_config,
                          num_workers=num_workers)
-    def init_base_model(self):
-        return efficientnet_v2_s(weights=EfficientNet_V2_S_Weights.DEFAULT)
 class EfficientNet_V2_M_Pretrained(EfficientNetPretrainedBase):
     def __init__(self,
-                 lr,
-                 batch_size,
-                 epochs,
+                 lr=0.01,
+                 batch_size=32,
+                 epochs=150,
                  momentum=0.9,
                  weight_decay=2e-5,
                  training_mode='pre_train',
@@ -850,8 +811,11 @@ class EfficientNet_V2_M_Pretrained(EfficientNetPretrainedBase):
                  lr_warmup_method='linear',
                  lr_warmup_decay=0,
                  optimizer_algorithm='sgd',
+                 log_config=None,
                  num_workers=0):
-        super().__init__(lr=lr,
+        super().__init__(
+                        base_model=efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.DEFAULT),
+                        lr=lr,
                          weight_decay=weight_decay,
                          batch_size=batch_size,
                          momentum=momentum,
@@ -863,14 +827,13 @@ class EfficientNet_V2_M_Pretrained(EfficientNetPretrainedBase):
                          lr_warmup_method=lr_warmup_method,
                          lr_warmup_decay=lr_warmup_decay,
                          optimizer_algorithm=optimizer_algorithm,
+                            log_config=log_config,
                          num_workers=num_workers)
-    def init_base_model(self):
-        return efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.DEFAULT)
 class EfficientNet_V2_L_Pretrained(EfficientNetPretrainedBase):
     def __init__(self,
-                 lr,
-                 batch_size,
-                 epochs,
+                 lr=0.01,
+                 batch_size=32,
+                 epochs=150,
                  momentum=0.9,
                  weight_decay=2e-5,
                  training_mode='pre_train',
@@ -880,8 +843,11 @@ class EfficientNet_V2_L_Pretrained(EfficientNetPretrainedBase):
                  lr_warmup_method='linear',
                  lr_warmup_decay=0,
                  optimizer_algorithm='sgd',
+                 log_config=None,
                  num_workers=0):
-        super().__init__(lr=lr,
+        super().__init__(
+                         base_model=efficientnet_v2_l(weights=EfficientNet_V2_L_Weights.DEFAULT),
+                         lr=lr,
                          weight_decay=weight_decay,
                          batch_size=batch_size,
                          momentum=momentum,
@@ -893,18 +859,43 @@ class EfficientNet_V2_L_Pretrained(EfficientNetPretrainedBase):
                          lr_warmup_method=lr_warmup_method,
                          lr_warmup_decay=lr_warmup_decay,
                          optimizer_algorithm=optimizer_algorithm,
+                         log_config=log_config,
                          num_workers=num_workers)
-    def init_base_model(self):
-        return efficientnet_v2_l(weights=EfficientNet_V2_L_Weights.DEFAULT)
-
 class VisionTransformer_B_16(ImageClassifierBase): 
     def __init__(self,lr,weight_decay,batch_size,mode='pre_train'):
         pass
 class VisionTransformer_L_16(ImageClassifierBase): 
-    pass
+    def __init__(self,lr=0.1,
+                 weight_decay=0.00002,
+                 batch_size=32,
+                 momentum=0.9,
+                 label_smoothing=0.1,
+                 lr_scheduler='cosineannealinglr',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0.01,
+                 epochs=150,
+                 norm_weight_decay=0.0,
+                 optimizer_algorithm='sgd',
+                 log_config=None,
+                 num_workers=0):
+        super().__init__(lr=lr,
+                        log_config=log_config,
+                         base_model=vit_l_16(weights=None,num_classes=NUM_CLASSES),
+                         batch_size=batch_size,
+                         epochs=epochs,
+                         weight_decay=weight_decay,
+                         momentum=momentum,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_scheduler=lr_scheduler,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         num_workers=num_workers)
 class VisionTransformer_H_14(ImageClassifierBase):
     pass
-
 class Resnet_18(ImageClassifierBase):
     def __init__(self,lr=0.01,
                  weight_decay=0.00002,
@@ -918,8 +909,11 @@ class Resnet_18(ImageClassifierBase):
                  epochs=150,
                  norm_weight_decay=0.0,
                  optimizer_algorithm='sgd',
+                 log_config=None,
                  num_workers=0):
-        super().__init__(lr=lr,
+        super().__init__(
+                         base_model=resnet18(weights=None,num_classes=NUM_CLASSES),
+                         lr=lr,
                          batch_size=batch_size,
                          epochs=epochs,
                          weight_decay=weight_decay,
@@ -931,10 +925,9 @@ class Resnet_18(ImageClassifierBase):
                          lr_warmup_method=lr_warmup_method,
                          lr_warmup_decay=lr_warmup_decay,
                          optimizer_algorithm=optimizer_algorithm,
+                            log_config=log_config,
                          num_workers=num_workers)
-    def init_base_model(self):
-        return resnet18(weights=None,num_classes=NUM_CLASSES)
-
+        
 
 class Resnet_18_Dropout(ImageClassifierBase):
     def __init__(self,dropout,
@@ -950,8 +943,10 @@ class Resnet_18_Dropout(ImageClassifierBase):
                  epochs=150,
                  norm_weight_decay=0.0,
                  optimizer_algorithm='sgd',
+                 log_config=None,
                  num_workers=0):
         super().__init__(lr=lr,
+                         base_model=resnet18(weights=None,num_classes=NUM_CLASSES),
                          batch_size=batch_size,
                          epochs=epochs,
                          weight_decay=weight_decay,
@@ -963,6 +958,7 @@ class Resnet_18_Dropout(ImageClassifierBase):
                          lr_warmup_method=lr_warmup_method,
                          lr_warmup_decay=lr_warmup_decay,
                          optimizer_algorithm=optimizer_algorithm,
+                         log_config=log_config,
                          num_workers=num_workers)
         self.dropout = dropout
         fc_layer = self.model.fc
@@ -970,8 +966,6 @@ class Resnet_18_Dropout(ImageClassifierBase):
             nn.Dropout(p=self.dropout,inplace=True),
            fc_layer
         )
-    def init_base_model(self):
-        return resnet18(weights=None,num_classes=NUM_CLASSES) 
 class Resnet_101(ImageClassifierBase):
     def __init__(self,lr=0.01,
                  weight_decay=0.00002,
@@ -985,8 +979,11 @@ class Resnet_101(ImageClassifierBase):
                  epochs=150,
                  norm_weight_decay=0.0,
                  optimizer_algorithm='sgd',
+                 log_config=None,
                  num_workers=0):
-        super().__init__(lr=lr,
+        super().__init__(
+                         base_model=resnet101(weights=None,num_classes=NUM_CLASSES),
+                         lr=lr,
                          batch_size=batch_size,
                          epochs=epochs,
                          weight_decay=weight_decay,
@@ -998,9 +995,8 @@ class Resnet_101(ImageClassifierBase):
                          lr_warmup_method=lr_warmup_method,
                          lr_warmup_decay=lr_warmup_decay,
                          optimizer_algorithm=optimizer_algorithm,
+                         log_config=log_config,
                          num_workers=num_workers)
-    def init_base_model(self):
-        return resnet101(weights=None, num_classes=NUM_CLASSES)
 class NaiveClassifier(ImageClassifierBase):
     def __init__(self,lr=0.01,
                  weight_decay=0.00002,
@@ -1014,8 +1010,11 @@ class NaiveClassifier(ImageClassifierBase):
                  epochs=150,
                  norm_weight_decay=0.0,
                  optimizer_algorithm='sgd',
+                 log_config=None,
                  num_workers=0):
-        super().__init__(lr=lr,
+        super().__init__(
+                         base_model=Naive(),
+                         lr=lr,
                          batch_size=batch_size,
                          epochs=epochs,
                          weight_decay=weight_decay,
@@ -1027,11 +1026,8 @@ class NaiveClassifier(ImageClassifierBase):
                          lr_warmup_method=lr_warmup_method,
                          lr_warmup_decay=lr_warmup_decay,
                          optimizer_algorithm=optimizer_algorithm,
+                         log_config=log_config,
                          num_workers=num_workers)
-    def init_base_model(self) -> Module:
-        return Naive()
-
-
 class Naive(Module):
     def __init__(self):
         super().__init__()
@@ -1059,8 +1055,8 @@ class Naive(Module):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
-
 class SimKD(nn.Module):
+    #https://arxiv.org/pdf/2203.14001.pdf
     def __init__(self, *, s_n, t_n, factor=2): 
         super(SimKD, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d((1,1))       
@@ -1103,3 +1099,180 @@ class SimKD(nn.Module):
         pred_feat_s = cls_t(temp_feat)
         
         return trans_feat_s, trans_feat_t, pred_feat_s
+    
+class OfflineFeatureBasedDistillation(ImageClassifierBase):
+    def __init__(self,student_model,
+                 teacher_model,
+                 factor=2,
+                 lr=0.1,
+                 batch_size=32,
+                 momentum=0.9,
+                 weight_decay=2e-5,
+                 norm_weight_decay=0.0,
+                 label_smoothing=0.0,
+                 lr_scheduler='cosineannealinglr',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0.01,
+                 optimizer_algorithm='sgd',
+                 num_workers=0,
+                 log_config=None,
+                 epochs=150,
+                 ):
+        
+        super().__init__(
+            base_model=student_model,
+            lr=lr,
+            batch_size=batch_size,
+            epochs=epochs,
+            momentum=momentum,
+            weight_decay=weight_decay,
+            norm_weight_decay=norm_weight_decay,
+            label_smoothing=label_smoothing,
+            lr_scheduler=lr_scheduler,
+            lr_warmup_epochs=lr_warmup_epochs,
+            lr_warmup_method=lr_warmup_method,
+            lr_warmup_decay=lr_warmup_decay,
+            optimizer_algorithm=optimizer_algorithm,
+            num_workers=num_workers,
+            log_config=log_config,
+        )
+        self.student_model = student_model
+        self.teacher_model = teacher_model
+
+        # See #https://arxiv.org/pdf/2203.14001.pdf for more details
+        # Output channels of the last feature layer of the student model
+        s_n = self.student_model.model.features[-1].out_channels
+        # Output channels of the last feature layer of the teacher model
+        t_n = self.teacher_model.model.features[-1].out_channels
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+
+        def conv1x1(in_channels, out_channels, stride=1):
+            return nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0, stride=stride, bias=False)
+        def conv3x3(in_channels, out_channels, stride=1, groups=1):
+            return nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=stride, bias=False, groups=groups)
+
+        # A bottleneck design to reduce extra parameters
+        self.transfer = nn.Sequential(
+            conv1x1(s_n, t_n//factor),
+            nn.BatchNorm2d(t_n//factor),
+            nn.ReLU(inplace=True),
+            conv3x3(t_n//factor, t_n//factor),
+            nn.BatchNorm2d(t_n//factor),
+            nn.ReLU(inplace=True),
+            conv1x1(t_n//factor, t_n),
+            nn.BatchNorm2d(t_n),
+            nn.ReLU(inplace=True),
+        )
+
+        #gradient computation not needed for teacher model!
+        self.teacher_model.freeze_layers()
+        self.name = f'Offline_Feature_Based_{self.student_model.name}_{self.teacher_model.name}'
+
+        self.save_hyperparameters({
+            'name':self.name
+        })
+
+        #add hyperparameters of each model to the hparams dict of the KD class
+        for key in self.student_model.hparams:
+            self.save_hyperparameters({f"student_{key}":self.student_model.hparams[key]})
+            
+        for key in self.teacher_model.hparams:
+            self.save_hyperparameters({f"teacher_{key}":self.teacher_model.hparams[key]})
+
+    def forward(self, x):
+        # Extract features from the student model
+        feat_s = self.student_model.model.features(x)
+        # Teacher-model should be in evaluation mode (this turns off dropout etc)
+        self.teacher_model.eval()
+        feat_t_dummy = self.teacher_model.model.features(x)
+            
+        if feat_s.shape[2] > feat_t_dummy.shape[2]:
+            feat_s = F.adaptive_avg_pool2d(feat_s, (feat_t_dummy.shape[2], feat_t_dummy.shape[2]))
+        
+
+        trans_feat_s = self.transfer(feat_s)
+
+        # Prediction via Teacher Classifier
+        temp_feat = self.avg_pool(trans_feat_s)
+        temp_feat = torch.flatten(temp_feat, 1)
+        pred_feat_s = self.teacher_model.model.classifier(temp_feat)
+        return pred_feat_s
+        
+
+    def training_step(self, batch,batch_idx):
+        images, labels = batch
+        #Teacher-model should be in evaluation mode (this turns off dropout etc)
+        self.teacher_model.eval()
+        #No gradient computation for teacher-model
+        with torch.no_grad():  
+            #output_teacher = self.teacher_model(images)
+            features_teacher = self.teacher_model.model.features(images)
+
+
+        #Training mode for student-model, gradient computation should be ON
+        features_student = self.student_model.model.features(images)
+        
+        #one-hot encoded (because of cutmix & mixup), convert to class label
+        if labels.size(dim=-1) == NUM_CLASSES:
+            labels = torch.argmax(labels,dim=1)
+    
+        
+
+        if features_student.shape[2] > features_teacher.shape[2]:
+            features_student = F.adaptive_avg_pool2d(features_student, (features_teacher.shape[2], features_teacher.shape[2]))
+        else:
+            with torch.no_grad():  
+                features_teacher = F.adaptive_avg_pool2d(features_teacher, (features_student.shape[2], features_student.shape[2]))
+
+        transformed_features_student = self.transfer(features_student)
+        with torch.no_grad():  
+            temp_features = self.avg_pool(transformed_features_student)
+            temp_features = torch.flatten(temp_features, 1)
+            predicted_features_student = self.teacher_model.model.classifier(temp_features)
+
+
+        total_loss = F.mse_loss(transformed_features_student,features_teacher)
+        accuracy = self.accuracy(predicted_features_student,labels)
+
+
+        self.log("train_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("train_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        return total_loss
+    
+    def validation_step(self,batch,batch_idx):
+        images, labels = batch
+        #Teacher-model should be in evaluation mode (this turns off dropout etc)
+        self.teacher_model.eval()
+        #No gradient computation for teacher-model
+        with torch.no_grad():  
+            #output_teacher = self.teacher_model(images)
+            features_teacher = self.teacher_model.model.features(images)
+
+
+        #Training mode for student-model, gradient computation should be ON
+        features_student = self.student_model.model.features(images)
+        
+        #one-hot encoded (because of cutmix & mixup), convert to class label
+        if labels.size(dim=-1) == NUM_CLASSES:
+            labels = torch.argmax(labels,dim=1)
+
+        if features_student.shape[2] > features_teacher.shape[2]:
+            features_student = F.adaptive_avg_pool2d(features_student, (features_teacher.shape[2], features_teacher.shape[2]))
+
+        transformed_features_student = self.transfer(features_student)
+        with torch.no_grad():  
+            temp_features = self.avg_pool(transformed_features_student)
+            predicted_features_student = self.teacher_model.model.classifier(temp_features)
+
+
+        total_loss = F.mse_loss(transformed_features_student,features_teacher)
+        accuracy = self.accuracy(predicted_features_student,labels)
+
+
+        self.log("validation_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("validation_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        return total_loss
+    
+    def test_step(self,batch,batch_idx):
+        pass

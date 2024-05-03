@@ -7,6 +7,8 @@ import pandas as pd
 import numpy as np
 import torch
 import importlib
+from tqdm import tqdm
+from pytorch_lightning.callbacks import TQDMProgressBar
 
 MODULE_NAME = 'models'
 def get_model(checkpoint_path):

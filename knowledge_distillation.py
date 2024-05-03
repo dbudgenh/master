@@ -14,7 +14,9 @@ def knowledge_distillation_loss(student_output,teacher_output,labels,label_smoot
 
     kd_loss = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(student_output/T,dim=1),
                         F.softmax(teacher_output/T,dim=1)) * (alpha * T * T)
-    cr_loss = F.cross_entropy(student_output,labels,label_smoothing=label_smoothing) * (1. - alpha)
+    cr_loss = F.cross_entropy(student_output,labels,
+                              label_smoothing=label_smoothing) * \
+                            (1. - alpha)
     return kd_loss, cr_loss, kd_loss + cr_loss
 
 

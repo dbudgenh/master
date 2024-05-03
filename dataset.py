@@ -19,6 +19,8 @@ from random import sample
 from collections import Counter
 import random
 
+NUM_CLASSES = 524
+
 class Split(Enum):
     TRAIN=1
     TEST=2
@@ -113,8 +115,7 @@ class BirdDatasetNPZ(Dataset):
         if self.transform:
             image = self.transform(image)
         return image,label
-
-    
+   
 class BaseDataModule(ABC,pl.LightningDataModule):
     """Base class for all the data modules, this class should never be instantiate directly, but inherited from.
     Data modules contain the train/valid/test/predict datasets, these methods should be implemented by the inherited class.
@@ -256,64 +257,100 @@ class UndersampleMinimumDataset(Dataset):
         return len(self.undersampled_dataset)
     
     def __getitem__(self, idx):
-       return self.undersampled_dataset.__getitem__(idx)
-       
-class SplitDatamodule(BaseDataModule):
+       return self.undersampled_dataset.__getitem__(idx) 
+
+class UndersampleSplitDatamodule(BaseDataModule):
     def __init__(self,
                  train_transform,
                  valid_transform,
-                 total_dataset,
-                 train_data_split_percentage=0.9,
+                 total_dataset:Dataset,
+                 data_split_ratios=[0.8,0.15,0.05],
                  random_seed=42,
                  batch_size=32,
-                 num_workers=4):
+                 num_workers=4,
+                 collate_fn=None):
         super().__init__(train_transform=train_transform,
                          valid_transform=valid_transform,
                          batch_size=batch_size,
-                         num_workers=num_workers)
-        self.train_data_percentage = train_data_split_percentage
+                         num_workers=num_workers,
+                         collate_fn=collate_fn)
+        assert sum(data_split_ratios) == 1.0, "Data split ratios must sum to 1.0"
+        self.train_data_percentage = data_split_ratios[0]
+        self.validation_data_percentage = data_split_ratios[1]
+        self.test_data_percentage = data_split_ratios[2]
 
         self.random_seed = random_seed #For recreation purposes
-        self.data_train, self.data_validation = self._split_dataset(total_dataset,
-                                                                    self.train_data_percentage)
+        total_dataset = UndersampleMinimumDataset(dataset=total_dataset)
+        self.data_train, self.data_validation,self.data_test = self._split_dataset(total_dataset,
+                                                                    data_split_ratios)
     def _split_dataset(self,
-                       dataset:Dataset,
-                       train_data_percentage:float) -> (Subset,Subset):
-        # Set the random seed for reproducibility
-        torch.manual_seed(self.random_seed)
+                       total_dataset:Dataset,
+                       data_split_ratios:float) -> tuple[Subset,Subset]:
+        
+        dataset_size = len(total_dataset)
+        items_per_class = dataset_size // NUM_CLASSES
 
-        # Calculate the number of samples for training and validation
-        total_size = len(dataset)
-        train_size = int(total_size * train_data_percentage)
-        validation_size = total_size - train_size
+        train_size_per_class = int(data_split_ratios[0] * items_per_class)
+        valid_size_per_class = int(data_split_ratios[1] * items_per_class)
 
-        indices = torch.randomperm(total_size).tolist()
+        # Preallocate lists for indices
+        train_indices = np.zeros(NUM_CLASSES * train_size_per_class, dtype=int)
+        valid_indices = np.zeros(NUM_CLASSES * valid_size_per_class, dtype=int)
+        test_indices = np.zeros(dataset_size - len(train_indices) - len(valid_indices), dtype=int)
+        
+        # Index offset for filling in the indices arrays
+        train_offset = valid_offset = test_offset = 0
+        
+        for class_id in range(NUM_CLASSES):
+            start_index = class_id * items_per_class
+            end_index = start_index + items_per_class
+            
+            # Shuffle class indices before splitting
+            np.random.seed(self.random_seed)
+            class_indices = np.random.permutation(np.arange(start_index, end_index))
+            
+            # Split indices for this class into train, valid, test
+            train_end = train_offset + train_size_per_class
+            valid_end = valid_offset + valid_size_per_class
+            
+            train_indices[train_offset:train_end] = class_indices[:train_size_per_class]
+            valid_indices[valid_offset:valid_end] = class_indices[train_size_per_class:train_size_per_class + valid_size_per_class]
+            test_indices[test_offset:test_offset + (items_per_class - train_size_per_class - valid_size_per_class)] = class_indices[train_size_per_class + valid_size_per_class:]
+            
+            train_offset += train_size_per_class
+            valid_offset += valid_size_per_class
+            test_offset += items_per_class - train_size_per_class - valid_size_per_class
+        
+        # Convert numpy arrays to lists (necessary for Subset class)
+        train_indices = train_indices.tolist()
+        valid_indices = valid_indices.tolist()
+        test_indices = test_indices.tolist()
+        
+        # Create subsets
+        train_dataset = Subset(dataset=total_dataset, 
+                               indices=train_indices, 
+                               transform=self.train_transform)
+        valid_dataset = Subset(dataset=total_dataset,
+                                indices=valid_indices,
+                                transform=self.valid_transform)
+        test_dataset = Subset(dataset=total_dataset,
+                              indices=test_indices,
+                              transform=self.valid_transform)
+        return train_dataset, valid_dataset, test_dataset
 
-        train_indices = indices[:train_size]
-        validation_indices = indices[train_size:train_size+validation_size]
-
-        train_dataset = Subset(
-            dataset=dataset,
-            indices=train_indices,
-            transform=self.train_transform
-        )
-        validation_dataset = Subset(
-            dataset=dataset,
-            indices=validation_indices,
-            transform=self.valid_transform
-        )
-        return train_dataset, validation_dataset
+        
+        
+      
 
     def train_data(self):
         return self.data_train
     def valid_data(self):
         return self.data_validation
     def test_data(self):
-        return ImageFolder(root="test" ,transform=self.valid_transform)
+        return self.data_test
     def predict_data(self):
         return ImageFolder(root="test" ,transform=self.valid_transform)
     
-
 class BirdDataNPZModule(BaseDataModule):
     def __init__(self,train_npz_path,valid_npz_path,test_npz_path,train_transform,valid_transform,batch_size=32,num_workers=2,collate_fn=None):
         super().__init__(train_transform=train_transform,valid_transform=valid_transform,batch_size=batch_size,num_workers=num_workers,collate_fn=collate_fn)
