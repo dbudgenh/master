@@ -37,11 +37,8 @@ All documents and code used for the master thesis are stored here
 - [x] KD implementation (try pre-trained student model and from scratch)
 - [x] Compare transfer learning with model trainined from scratch
 - [x] K-Fold (4,5) Cross-Validation
-- [ ] Try Triplet-network
-- [ ] Try Siamese-network
 - [x] Try State-of-the-art network
 - [x] Fine-tuning model
-- [ ] Fewshot learning
 - [x] Implement state-of-the-art regularization technqiues
   - [x] LR-Optimization
     - [x] LR-Scheduler
@@ -84,7 +81,7 @@ Prepare ppt distinction between my presentation and Leo
 
 - Models
   - David: ResNet, EfficientNet, VisionTransformer
-  - Leo: ResNet, Siamese-network / Triplet-Network
+  - Leo: ResNet
 - Regularization
   - David: Augmentation/Regularization techniques 1 (Random-Crop, Random erasing (from Paper), ...)
   - Leo : Augmentation/Regularization techniques 2 (AugMix (from Paper), ....)
