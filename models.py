@@ -4,9 +4,9 @@ import torch.nn as nn
 import torch 
 import torch.nn.functional as F
 from torch.nn.modules import Module
-from torchvision.models import efficientnet_b0,efficientnet_v2_s,efficientnet_v2_m,efficientnet_v2_l,vit_l_16,EfficientNet_V2_S_Weights,EfficientNet_V2_M_Weights,EfficientNet_B0_Weights,EfficientNet_V2_L_Weights,ViT_L_16_Weights
+from torchvision.models import efficientnet_b0,efficientnet_v2_s,efficientnet_v2_m,efficientnet_v2_l,vit_l_16,vit_h_14,EfficientNet_V2_S_Weights,EfficientNet_V2_M_Weights,EfficientNet_B0_Weights,EfficientNet_V2_L_Weights,ViT_L_16_Weights
 from torchvision.models import resnet18,resnet101
-from torchvision.models import vit_b_16,ViT_B_16_Weights
+from torchvision.models import vit_b_16,ViT_B_16_Weights,ViT_H_14_Weights
 import pytorch_lightning as pl
 import torch.optim as optim
 from torchmetrics import Accuracy,F1Score,MatthewsCorrCoef,ConfusionMatrix,ROC,AUROC
@@ -24,8 +24,9 @@ from matplotlib.colors import LinearSegmentedColormap
 from captum.attr import IntegratedGradients,GuidedGradCam,GradientShap,Saliency,NoiseTunnel
 from captum.attr import visualization as viz
 from pytorch_grad_cam import GradCAM, ScoreCAM, HiResCAM, EigenCAM, AblationCAM, GradCAMPlusPlus, GradCAMElementWise
-from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget,ClassifierOutputSoftmaxTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
+from pytorch_grad_cam.metrics.road import ROADCombined
 import numpy as np
 from transformations import denormalize
 from torchvision.transforms import transforms
@@ -86,8 +87,7 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.test_step_input = []
 
 
-        
-
+    
         if not self.log_config:
             self.log_config = {
             'confusion_matrix':True,
@@ -271,26 +271,36 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         selection_functions += [bottom_k,"Bottom"] if self.log_config['bottomk'] else []
         selection_functions += [rand_k,"Random"] if self.log_config['randomk'] else []
 
-        target_layers = [self.model.layer4[-1]]
-
         top_k_propabilities = torch.topk(all_predictions_max_probabilities.values,10) #(k)
         bottom_k_propabilities = torch.topk(all_predictions_max_probabilities.values,10,largest=False) #(k)
         all_predictions_idx = torch.argmax(all_predictions_probabilities,dim=1) #(2625)
+        
+        if utils.is_vision_transformer(self.model):
+            target_layers = [self.model.encoder.layers[-1].ln_1]
+            reshape_transform = utils.reshape_transform
+        elif utils.is_resnet(self.model):
+            target_layers = [self.model.layer4[-1]]
+            reshape_transform = None
+        elif utils.is_efficientnet(self.model):
+            target_layers = [self.model.features[-1]]
+            reshape_transform = None
+        else:
+            target_layers = [self.model.layer4[-1]]
+            reshape_transform = None
 
-        target_layers = [self.model.layer4[-1]]
-        targets = [ClassifierOutputTarget(NUM_CLASSES-1)]
+        
         pytorch_gradcam_cams = [
-            GradCAM(model=self.model,target_layers=target_layers,use_cuda=True),
-            HiResCAM(model=self.model,target_layers=target_layers,use_cuda=True),
-            AblationCAM(model=self.model,target_layers=target_layers,use_cuda=True),
-            GradCAMPlusPlus(model=self.model,target_layers=target_layers,use_cuda=True),
-            GradCAMElementWise(model=self.model,target_layers=target_layers,use_cuda=True)
+            GradCAM(model=self.model,target_layers=target_layers,use_cuda=True,reshape_transform=reshape_transform),
+            HiResCAM(model=self.model,target_layers=target_layers,use_cuda=True,reshape_transform=reshape_transform),
+            AblationCAM(model=self.model,target_layers=target_layers,use_cuda=True,reshape_transform=reshape_transform),
+            GradCAMPlusPlus(model=self.model,target_layers=target_layers,use_cuda=True,reshape_transform=reshape_transform),
+            GradCAMElementWise(model=self.model,target_layers=target_layers,use_cuda=True,reshape_transform=reshape_transform)
         ]
 
         #Captum init cams
         captum_alg = [
             IntegratedGradients(self.model),
-            GuidedGradCam(model=self.model,layer=target_layers[0]),
+            #GuidedGradCam(model=self.model,layer=target_layers[0]),
             Saliency(self.model)
         ]
 
@@ -304,7 +314,6 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         if self.log_config['roc_curve']:
             #Create ROC-Curve
             fpr, tpr, thresholds = self.roc_curve(all_predictions,all_labels)
-            
             #For each class, create a seperate roc-curve
             for i in tqdm(range(NUM_CLASSES),desc="ROC curve"):
                 fig = utils.get_roc_curve_figure(fpr=fpr[i],tpr=tpr[i],thresholds=thresholds[i])
@@ -335,6 +344,9 @@ class ImageClassifierBase(ABC,pl.LightningModule):
             best_softmax_idx = all_predictions_probabilities[best_idx]
             #get ground truth probability for each of the top_k softmaxvectors
             best_gt_prob = best_softmax_idx[torch.arange(TOP_K),best_labels]
+
+            targets_metric = [ClassifierOutputSoftmaxTarget(class_id) for class_id in best_predictions]
+            targets_cam = [ClassifierOutputTarget(class_id) for class_id in best_predictions]
                                                     
             #pytorch-cam
             if self.log_config['pytorch_cam']:                                    
@@ -345,9 +357,8 @@ class ImageClassifierBase(ABC,pl.LightningModule):
                 #apply pytorch_gradcam_cam
                 for cam in pytorch_gradcam_cams:
                     with torch.enable_grad():
-                        cam_images = cam(input_tensor=best_images, targets=targets,aug_smooth=True,eigen_smooth=False)
+                        cam_images = cam(input_tensor=best_images, targets=targets_cam,aug_smooth=False,eigen_smooth=False)
                     cam_name = str(type(cam)).split(".")[-1][:-2]
-                    
                     for idx, cam_image in enumerate(cam_images):
                         permuted_image = denormalized_images[idx].permute(1,2,0).cpu()
                         visualization = show_cam_on_image(permuted_image.numpy().astype(np.float32)/255, cam_image, use_rgb=True,image_weight=0.5)
@@ -378,7 +389,6 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.test_step_prediction.clear()
         self.test_step_label.clear()
         self.test_step_input.clear()
-
 class OfflineResponseBasedDistillation(ImageClassifierBase):
     def __init__(self,student_model,
                  teacher_model,
@@ -895,7 +905,186 @@ class VisionTransformer_L_16(ImageClassifierBase):
                          optimizer_algorithm=optimizer_algorithm,
                          num_workers=num_workers)
 class VisionTransformer_H_14(ImageClassifierBase):
-    pass
+     def __init__(self,lr=0.1,
+                 weight_decay=0.00002,
+                 batch_size=32,
+                 momentum=0.9,
+                 label_smoothing=0.1,
+                 lr_scheduler='cosineannealinglr',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0.01,
+                 epochs=150,
+                 norm_weight_decay=0.0,
+                 optimizer_algorithm='sgd',
+                 log_config=None,
+                 num_workers=0):
+        super().__init__(lr=lr,
+                        log_config=log_config,
+                         base_model=vit_h_14(weights=None,num_classes=NUM_CLASSES),
+                         batch_size=batch_size,
+                         epochs=epochs,
+                         weight_decay=weight_decay,
+                         momentum=momentum,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_scheduler=lr_scheduler,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         num_workers=num_workers)
+class VisionTransformerPretrainedBase(ImageClassifierBase):
+    def __init__(self,
+                 base_model,
+                 lr=0.01,
+                 batch_size=32,
+                 epochs=150,
+                 weight_decay=2e-5,
+                 momentum=0.9,
+                 norm_weight_decay=0.0,
+                 label_smoothing=0.1,
+                 training_mode='pre_train',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0.01,
+                 optimizer_algorithm='sgd',
+                 log_config=None,
+                 num_workers=0):
+        super().__init__(lr=lr,
+                         base_model=base_model,
+                         log_config=log_config,
+                        batch_size=batch_size,
+                        momentum=momentum,
+                        epochs=epochs,
+                         weight_decay=weight_decay,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_scheduler='cosineannealinglr' if training_mode == 'fine_tune' else 'reducelronplateu',
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         num_workers=num_workers)
+        self.training_mode = training_mode
+        print(f"\ttraining_mode={self.training_mode}")
+        self.freeze_layers()
+        self.name = self.name + "_" + self.training_mode
+        
+        #Change final classification layer
+        #This is necessary, because a pre-trained network is pre-trained on imagenet with 1000 classes
+        #The final layer will only be trained
+        assert hasattr(self.model.heads, "head") and isinstance(self.model.heads.head, nn.Linear)
+        self.model.heads.head = nn.Linear(self.model.heads.head.in_features, NUM_CLASSES)
+
+    def configure_optimizers(self) -> Any:
+        parameters = utils.set_weight_decay(
+            self,
+            self.weight_decay,
+            self.norm_weight_decay,
+            None
+        )
+        if self.training_mode == 'pre_train':
+            if self.optimizer_algorithm == 'sgd':
+                optimizer = SGD(parameters,lr=self.lr,momentum=self.momentum,weight_decay=self.weight_decay)
+            elif self.optimizer_algorithm == 'adam':
+                optimizer = AdamW(parameters,lr=self.lr,weight_decay=self.weight_decay)
+            else:
+                raise RuntimeError(
+                f"Invalid optimizer algorithm '{self.lr_scheduler}'. Only sgd or adam is supported."
+            )
+            scheduler = ReduceLROnPlateau(optimizer,mode='min',factor=0.2,patience=4)
+            return [optimizer],[{"scheduler": scheduler,'monitor':'validation_loss'}]
+        if self.training_mode == 'fine_tune':
+            if self.optimizer_algorithm == 'sgd':
+                optimizer = SGD(parameters,lr=self.lr,momentum=self.momentum,weight_decay=self.weight_decay)
+            elif self.optimizer_algorithm == 'adam':
+                optimizer = AdamW(parameters,lr=self.lr,weight_decay=self.weight_decay)
+            else:
+                raise RuntimeError(
+                f"Invalid optimizer algorithm '{self.lr_scheduler}'. Only sgd or adam is supported."
+            )
+            if self.lr_scheduler == 'cosineannealinglr':
+                scheduler = CosineAnnealingLR(optimizer, T_max=self.epochs - self.lr_warmup_epochs)
+            else:
+                raise RuntimeError(
+                    f"Invalid lr scheduler '{self.lr_scheduler}'. Only cosineannealinglr is supported."
+                )
+            if self.lr_warmup_epochs > 0:
+                if self.lr_warmup_method == 'linear':
+                    warmup_lr_scheduler = LinearLR(optimizer, start_factor=self.lr_warmup_decay, total_iters=self.lr_warmup_epochs)
+                else:
+                    raise RuntimeError(
+                    f"Invalid lr warmup method '{self.lr_warmup_method}'. Only linear is supported."
+                )
+                lr_scheduler = SequentialLR(optimizer,schedulers=[warmup_lr_scheduler,scheduler],milestones=[self.lr_warmup_epochs])
+            else :
+                lr_scheduler = scheduler
+            return [optimizer],[{"scheduler": lr_scheduler,'interval':'epoch'}]
+class VisionTransformer_L_16_Pretrained(VisionTransformerPretrainedBase):
+    def __init__(self,
+                 lr=0.01,
+                 batch_size=32,
+                 epochs=150,
+                 momentum=0.9,
+                 weight_decay=2e-5,
+                 training_mode='pre_train',
+                 norm_weight_decay=0.0,
+                 label_smoothing=0.1,
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0,
+                 optimizer_algorithm='sgd',
+                 log_config=None,
+                 num_workers=0):
+        super().__init__(
+                         base_model=vit_l_16(weights=ViT_L_16_Weights.IMAGENET1K_SWAG_LINEAR_V1),
+                         lr=lr,
+                         weight_decay=weight_decay,
+                         batch_size=batch_size,
+                         momentum=momentum,
+                         epochs=epochs,
+                         training_mode=training_mode,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         log_config=log_config,
+                            num_workers=num_workers)
+class VisionTransformer_H_14_Pretrained(VisionTransformerPretrainedBase):
+    def __init__(self,
+                 lr=0.01,
+                 batch_size=32,
+                 epochs=150,
+                 momentum=0.9,
+                 weight_decay=2e-5,
+                 training_mode='pre_train',
+                 norm_weight_decay=0.0,
+                 label_smoothing=0.1,
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0,
+                 optimizer_algorithm='sgd',
+                 log_config=None,
+                 num_workers=0):
+        super().__init__(
+                         base_model=vit_h_14(weights=ViT_H_14_Weights.IMAGENET1K_SWAG_LINEAR_V1),
+                         lr=lr,
+                         weight_decay=weight_decay,
+                         batch_size=batch_size,
+                         momentum=momentum,
+                         epochs=epochs,
+                         training_mode=training_mode,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         log_config=log_config,
+                            num_workers=num_workers)
 class Resnet_18(ImageClassifierBase):
     def __init__(self,lr=0.01,
                  weight_decay=0.00002,
@@ -1259,10 +1448,14 @@ class OfflineFeatureBasedDistillation(ImageClassifierBase):
 
         if features_student.shape[2] > features_teacher.shape[2]:
             features_student = F.adaptive_avg_pool2d(features_student, (features_teacher.shape[2], features_teacher.shape[2]))
+        else:
+            with torch.no_grad():  
+                features_teacher = F.adaptive_avg_pool2d(features_teacher, (features_student.shape[2], features_student.shape[2]))
 
         transformed_features_student = self.transfer(features_student)
         with torch.no_grad():  
             temp_features = self.avg_pool(transformed_features_student)
+            temp_features = torch.flatten(temp_features, 1)
             predicted_features_student = self.teacher_model.model.classifier(temp_features)
 
 

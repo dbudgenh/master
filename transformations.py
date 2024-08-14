@@ -38,9 +38,9 @@ def denormalize(z,mu,std):
 
 
 #Recommended transformations for state-of-the-art performance
-def default_transforms(use_npz_dataset=False):
+def default_transforms(use_npz_dataset=False,is_vision_transformer=False):
     train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(TRAIN_CROP_SIZE,interpolation=INTERPOLATION,antialias=True),
+        transforms.RandomResizedCrop(TRAIN_CROP_SIZE if not is_vision_transformer else 224,interpolation=INTERPOLATION,antialias=True),
         transforms.RandomHorizontalFlip(p=0.5),
         autoaugment.TrivialAugmentWide(interpolation = INTERPOLATION),
         transforms.ToTensor() if not use_npz_dataset else standardize, #Npz dataset is already a tensor, so standardize from 0-255 -> 0-1
@@ -50,7 +50,7 @@ def default_transforms(use_npz_dataset=False):
 
     valid_transform = transforms.Compose([
         transforms.Resize(VAL_RESIZE_SIZE,interpolation=INTERPOLATION,antialias=True),
-        transforms.CenterCrop(VAL_CROP_SIZE),
+        transforms.CenterCrop(VAL_CROP_SIZE if not is_vision_transformer else 224) ,
         transforms.ToTensor() if not use_npz_dataset else standardize, #Npz dataset is already a tensor, so standardize from 0-255 -> 0-1
         transforms.Normalize(mean=IMAGENET_MEAN,std=IMAGENET_STD)
     ])

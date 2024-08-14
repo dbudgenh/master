@@ -9,6 +9,7 @@ import torch
 import importlib
 from tqdm import tqdm
 from pytorch_lightning.callbacks import TQDMProgressBar
+from torchvision.models import VisionTransformer,ResNet,EfficientNet
 
 MODULE_NAME = 'models'
 def get_model(checkpoint_path):
@@ -122,6 +123,24 @@ def get_roc_curve_figure(fpr, tpr, thresholds,step_size=10,font_size=10):
         plt.annotate(f'{threshold:.2f}', (fpr[::step_size][i], tpr[::step_size][i]), textcoords="offset points", xytext=(0, 5), ha='center',fontsize=font_size)
     result = plt.gcf()
     plt.close()
+    return result
+
+def is_vision_transformer(model):
+    return isinstance(model,VisionTransformer)
+def is_resnet(model):
+    return isinstance(model,ResNet)
+def is_efficientnet(model):
+    return isinstance(model,EfficientNet)
+
+def reshape_transform(tensor, height=14, width=14):
+    # Exclude the class token and reshape the tensor
+    # (batch_size, seq_length, hidden_dim) -> (batch_size, height, width, hidden_dim)
+    result = tensor[:, 1:, :].reshape(tensor.size(0), height, width, tensor.size(2))
+
+    # Transpose the dimensions to bring channels to the first dimension
+    # (batch_size, height, width, hidden_dim) -> (batch_size, hidden_dim, height, width)
+    result = result.transpose(2, 3).transpose(1, 2)
+    
     return result
 
 

@@ -8,7 +8,9 @@ def show_image_from_array(image_array,title='') -> None:
     Args:
         image (np_array): numpy array of the iamge
     """
-    plt.title(title)
+
+
+    plt.title(title,fontsize=20)
     io.imshow(image_array)
     plt.show()
 

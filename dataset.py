@@ -70,6 +70,7 @@ class BirdDataset(Dataset):
                 bird_frame = bird_frame[bird_frame['data set'] == 'valid']
         self.class_id = torch.tensor(bird_frame['class id'].tolist())
         self.base_path =np.array(bird_frame['filepaths'].tolist()).astype(np.string_)
+        self.scientific_name = np.array(bird_frame['labels'].tolist()).astype(np.string_)
         self.root_dir = root_dir
         self.transform = transform
         del bird_frame
@@ -85,11 +86,11 @@ class BirdDataset(Dataset):
         img_path = os.path.join(self.root_dir,base_path)
         #label = self.bird_frame.iloc[idx,2]
         #dataset = self.bird_frame.iloc[idx,3]
-        #scientific_name = self.bird_frame.iloc[idx,4]
+        #scientific_name = str(self.scientific_name[idx],encoding='utf-8')
         image = default_loader(img_path) #read_image(img_path) #output has shape (3,224,224)
         if self.transform:
             image = self.transform(image)
-        return image, class_id
+        return image, class_id,img_path
     
 class BirdDatasetNPZ(Dataset):
     """Dataset containing images of birds. The dataset gets stored in memory, by loading the .npz (numpy compressed file) file
@@ -153,8 +154,6 @@ class BaseDataModule(ABC,pl.LightningDataModule):
         if stage == 'predict':
             print(f"Calling stage {stage} (predict)")
             self.predicting_data = self.predict_data()
-
-    
 
 
     def train_dataloader(self):

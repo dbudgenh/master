@@ -121,3 +121,35 @@ colab : 2.01it/s batch_size = 128 (total 662it) -> Pro epoch 5.5minuten
 - Combine response + feature to get relational approach
 
 Feature based KD: https://github.com/DefangChen/SimKD
+
+https://tcs.uni-frankfurt.de/projects/grading/
+
+Titel ändern -> Mehr auf Visualisierung, erklärung wie gut die Visualisierung.
+
+Transformer-Architektur
+Beide online/- offline/self-destillation
+
+Metriken die Visualisierung quantifizieren. Wie gut sind die Visualisierung, welche am besten.
+Pytorch-gradcam github Metriken
+
+Saliency/Maps
+Grad/Cam -> Best + Variants
+Deep-Lift
+Integrated Gradients
+(XRAI)
+
+Teacher/Student Evaluation Comparision (Visualization)
+
+Enhancing (Bird Species) Classification via Transformer Models: Utilizing Knowledge Distillation and Explainable AI for Improved Predictive Insights
+or
+Enhancing Bird Species Classification via Transformer Models: Utilizing Knowledge Distillation and Explainable AI for Improved Visual Understanding
+
+# Declaration according to the master's regulations in computer science
+
+Nach dem Deckblatt, den text von dem .pdf (C:\Users\david\Desktop\Thesis\master-thesis\PA_Erklaerung-zur-Abschlussarbeit-Master-Informatik_PO2019.pdf) hinzufügen.
+
+# Metric pro Class, for every image, running average, std.
+
+# Transformer metric
+
+# Zotero

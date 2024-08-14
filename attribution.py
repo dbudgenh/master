@@ -1,5 +1,5 @@
 from models import EfficientNet_V2_S,EfficientNet_V2_L
-from transforms import old_transforms,default_transforms, default_collate_fn
+from transformations  import old_transforms,default_transforms, default_collate_fn
 from dataset import BirdDataModule
 from matplotlib.colors import LinearSegmentedColormap
 

@@ -1,4 +1,4 @@
-from models import EfficientNet_B0,NaiveClassifier,EfficientNet_V2_S,EfficientNet_V2_M,EfficientNet_V2_S_Pretrained,EfficientNet_V2_L
+from models import EfficientNet_B0,NaiveClassifier,EfficientNet_V2_S,EfficientNet_V2_M,EfficientNet_V2_S_Pretrained,EfficientNet_V2_L,VisionTransformer_L_16
 from dataset import BirdDataNPZModule,BirdDataModule,BirdDataset,BirdDataModuleV2,UndersampleSplitDatamodule
 import torch
 import torchvision
@@ -16,9 +16,9 @@ from torchvision.models import EfficientNet_V2_S_Weights,EfficientNet_B0_Weights
 from transformations import default_transforms,default_collate_fn,old_transforms
 
 
-CHECKPOINT_PATH = r'C:\Users\david\Desktop\Python\master\lightning_logs\version_11\checkpoints\EfficientNet_V2_L_V2_epoch=582_validation_loss=1.0952_validation_accuracy=0.97_validation_mcc=0.96.ckpt'
+CHECKPOINT_PATH = r'C:\Users\david\Desktop\Python\master\lightning_logs\version_15\checkpoints\EfficientNet_V2_L_V2_epoch=391_validation_loss=1.2287_validation_accuracy=0.96_validation_mcc=0.94.ckpt'
 BATCH_SIZE = 64 #128 is optimal for TPUs, use multiples of 64 that fit into memory
-NUM_WORKERS = 12
+NUM_WORKERS = 16
 EPOCHS = 600
 LEARNING_RATE = 0.5
 MOMENTUM=0.9
@@ -32,7 +32,7 @@ LABEL_SMOOTHING = 0.1
 
 def main():
     torch.set_float32_matmul_precision('medium')
-    train_transform, valid_transform, version = default_transforms()
+    train_transform, valid_transform, version = default_transforms(is_vision_transformer=False)
     collate_fn = default_collate_fn()
 
     # datamodule = BirdDataModuleV2(root_dir='C:/Users/david/Desktop/Python/master/data',
@@ -50,7 +50,7 @@ def main():
                                             batch_size=BATCH_SIZE,
                                             num_workers=NUM_WORKERS,
                                             collate_fn=collate_fn)
-    model = EfficientNet_V2_L(lr=LEARNING_RATE,
+    model = VisionTransformer_L_16(lr=LEARNING_RATE,
                               weight_decay=WEIGHT_DECAY,
                               momentum=MOMENTUM,
                               norm_weight_decay=NORM_WEIGHT_DECAY,
@@ -66,14 +66,14 @@ def main():
     
     lr_monitor = LearningRateMonitor(logging_interval='step')
     model_checkpoint = ModelCheckpoint(
-                                       filename=f"{model.name}_{version}_"+ "{epoch}_{validation_loss:.4f}_{validation_accuracy:.2f}_{validation_mcc:.2f}", 
+                                       filename=f"{model.name}_{version}_"+ "{epoch}_{validation_loss:.4f}_{validation_accuracy:.3f}_{validation_mcc:.3f}", 
                                        save_top_k=1,
                                        verbose=True,
                                        monitor="validation_loss",
                                        mode='min')
     
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precision='bf16-mixed') #
-    trainer.fit(model=model,datamodule=datamodule,ckpt_path=CHECKPOINT_PATH)
+    trainer.fit(model=model,datamodule=datamodule)#ckpt_path=CHECKPOINT_PATH)
     model.log_text_to_tensorboard('best_checkpoint_file_name',model_checkpoint.best_model_path)
 
     #switching off inference for test
