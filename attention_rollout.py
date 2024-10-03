@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import utils
 from transformations import default_transforms,default_collate_fn
 from functools import partial
-from vit_rollout import VITAttentionRollout
+from vit_rollout import VITAttentionRollout,VITAttentionGradRollout
 import cv2
 import torch.nn.functional as F
 
@@ -38,7 +38,7 @@ def main():
     
     test_loader = DataLoader(dataset=test_dataset,
                             batch_size=BATCH_SIZE,
-                            shuffle=False, 
+                            shuffle=True, 
                             num_workers=2)
     #ckpt_path = r'C:\Users\david\Desktop\Python\master\lightning_logs\version_36\checkpoints\VisionTransformer_H_14_Pretrained_fine_tune_V2_epoch=52_validation_loss=1.0414_validation_accuracy=0.988_validation_mcc=0.977.ckpt'
     ckpt_path = r'C:\Users\david\Desktop\Python\master\lightning_logs\version_23\checkpoints\VisionTransformer_L_16_Pretrained_fine_tune_V2_epoch=94_validation_loss=1.0670_validation_accuracy=0.982_validation_mcc=0.976.ckpt'
@@ -50,23 +50,24 @@ def main():
 
     attention_rollout = VITAttentionRollout(model=model.model,
                                             attention_layer_name='self_attention$',
-                                            discard_ratio=0.90,
+                                            discard_ratio=0.0,
                                             head_fusion='mean')
+    # attention_rollout = VITAttentionGradRollout(model=model.model,
+    #                                             attention_layer_name='self_attention$',
+    #                                             discard_ratio=0.0)
     #mask = attention_rollout(input_tensor)
 
     for i in range(BATCH_SIZE):
-        #mask = attention_rollout(input_tensor[i].unsqueeze(0))
-        cls_rollout = attention_rollout(input_tensor[i].unsqueeze(0))[:,0,1:]
-        mask = F.upsample(cls_rollout.view(-1,1,14,14),(224,224),mode='bicubic').squeeze().squeeze().detach().numpy()
-        #normalize
-        mask = mask - np.min(mask)
-        mask = mask / np.max(mask)
-        
+        mask = attention_rollout(input_tensor[i].unsqueeze(0))
+        #mask = attention_rollout(input_tensor[i].unsqueeze(0),0)
+        mask = cv2.resize(mask, (224, 224))
+
+  
         rgb_image = resize(array_from_image_path(paths[i]),(224,224))
         #mask = cv2.resize(mask, (224, 224))
         image_cam = mask
 
-        visualization = show_cam_on_image(rgb_image, mask, use_rgb=True,image_weight=0.5,colormap=20)
+        visualization = show_cam_on_image(rgb_image, mask, use_rgb=True,image_weight=0.5,colormap=2)
         print(paths[i])
         show_multiple_images(images=[rgb_image,image_cam,visualization],titles=['Original','Heat map', 'Combined'])
 

@@ -74,7 +74,8 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.log_config = log_config
         
 
-        self.accuracy = Accuracy(task="multiclass", num_classes=NUM_CLASSES)
+        self.accuracy_top_1 = Accuracy(task="multiclass", num_classes=NUM_CLASSES,top_k=1)
+        self.accuracy_top_5 = Accuracy(task="multiclass", num_classes=NUM_CLASSES,top_k=5)
         self.mcc = MatthewsCorrCoef(task="multiclass",num_classes=NUM_CLASSES)
         self.criterion = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
         self.confusion_matrix = ConfusionMatrix(task="multiclass",num_classes=NUM_CLASSES)
@@ -202,14 +203,17 @@ class ImageClassifierBase(ABC,pl.LightningModule):
             labels = torch.argmax(labels,dim=1)
 
         loss = self.criterion(output,labels)
-        accuracy = self.accuracy(output,labels)
+        accuracy_top_1 = self.accuracy_top_1(output,labels)
+        accuracy_top_5 = self.accuracy_top_5(output,labels)
         mcc = self.mcc(output,labels)
 
         self.logger.experiment.add_scalars('loss',{'train':loss},global_step=self.global_step)
-        self.logger.experiment.add_scalars('accuracy',{'train':accuracy},global_step=self.global_step)
+        self.logger.experiment.add_scalars('accuracy_top_1',{'train':accuracy_top_1},global_step=self.global_step)
+        self.logger.experiment.add_scalars('accuracy_top_5',{'train':accuracy_top_5},global_step=self.global_step)
         self.logger.experiment.add_scalars('mcc',{'train':mcc},global_step=self.global_step)
 
-        self.log("train_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
+        self.log("train_accuracy",accuracy_top_1,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
+        self.log("train_accuracy_top_5",accuracy_top_5,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         self.log("train_loss",loss,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         self.log("train_mcc",mcc,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         return loss
@@ -219,16 +223,19 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         inputs, labels = batch
         output = self(inputs)
         loss = self.criterion(output,labels)
-        accuracy = self.accuracy(output,labels)
+        accuracy_top_1 = self.accuracy_top_1(output,labels)
+        accuracy_top_5 = self.accuracy_top_5(output,labels)
         mcc = self.mcc(output,labels)
 
 
         self.logger.experiment.add_scalars('loss',{'validation':loss},global_step=self.global_step)
-        self.logger.experiment.add_scalars('accuracy',{'validation':accuracy},global_step=self.global_step)
+        self.logger.experiment.add_scalars('accuracy_top_1',{'validation':accuracy_top_1},global_step=self.global_step)
+        self.logger.experiment.add_scalars('accuracy_top_5',{'validation':accuracy_top_5},global_step=self.global_step)
         self.logger.experiment.add_scalars('mcc',{'validation':mcc},global_step=self.global_step)
 
 
-        self.log("validation_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
+        self.log("validation_accuracy",accuracy_top_1,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
+        self.log("validation_accuracy",accuracy_top_5,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         self.log("validation_loss",loss,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         self.log("validation_mcc",mcc,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         
@@ -240,11 +247,13 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         inputs, labels = batch
         output = self(inputs)
         loss = self.criterion(output,labels)
-        accuracy = self.accuracy(output,labels)
+        accuracy_top_1 = self.accuracy_top_1(output,labels)
+        accuracy_top_5 = self.accuracy_top_5(output,labels)
         mcc = self.mcc(output,labels)
 
         #predictions = torch.argmax(output,dim=1)
-        self.log("test_accuracy",accuracy,prog_bar=True,batch_size=self.batch_size)
+        self.log("test_accuracy",accuracy_top_1,prog_bar=True,batch_size=self.batch_size)
+        self.log("test_accuracy_top_5",accuracy_top_5,prog_bar=True,batch_size=self.batch_size)
         self.log("test_loss",loss,prog_bar=True,batch_size=self.batch_size)
         self.log("test_mcc",mcc,prog_bar=True,batch_size=self.batch_size)
 
@@ -474,7 +483,9 @@ class OfflineResponseBasedDistillation(ImageClassifierBase):
                                                                    label_smoothing=0.0,
                                                                    alpha=self.alpha,
                                                                    T=self.T)
-        accuracy = self.accuracy(output_student,labels)
+        accuracy_top_1 = self.accuracy_top_1(output_student,labels)
+        accuracy_top_5 = self.accuracy_top_5(output_student,labels)
+
         mcc = self.mcc(output_student,labels)
 
         #log all three loses in 1 graph, each step
@@ -493,7 +504,8 @@ class OfflineResponseBasedDistillation(ImageClassifierBase):
         global_step=self.current_epoch)
 
         
-        self.log("train_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("train_accuracy",accuracy_top_1,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("train_accuracy_top_5",accuracy_top_5,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("train_kd_loss",kd_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("train_cr_loss",cr_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("train_total_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
@@ -516,7 +528,9 @@ class OfflineResponseBasedDistillation(ImageClassifierBase):
                                                                    labels=labels,
                                                                    alpha=self.alpha,
                                                                    T=self.T)
-        accuracy = self.accuracy(output_student,labels)
+        accuracy_top_1 = self.accuracy_top_1(output_student,labels)
+        accuracy_top_5 = self.accuracy_top_5(output_student,labels)
+
         mcc = self.mcc(output_student,labels)
 
          #log all three loses in 1 graph, each step
@@ -534,7 +548,8 @@ class OfflineResponseBasedDistillation(ImageClassifierBase):
             },
         global_step=self.current_epoch)
 
-        self.log("validation_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("validation_accuracy",accuracy_top_1,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("validation_accuracy_top_5",accuracy_top_5,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("validation_kd_loss",kd_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("validation_cr_loss",cr_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("validation_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
@@ -557,11 +572,13 @@ class OfflineResponseBasedDistillation(ImageClassifierBase):
                                                                    labels=labels,
                                                                    alpha=self.alpha,
                                                                    T=self.T)
-        accuracy = self.accuracy(output_student,labels)
+        accuracy_top_1 = self.accuracy_top_1(output_student,labels)
+        accuracy_top_5 = self.accuracy_top_5(output_student,labels)
         mcc = self.mcc(output_student,labels)
 
 
-        self.log("test_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("test_accuracy",accuracy_top_1,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("test_accuracy_top_5",accuracy_top_5,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("test_kd_loss",kd_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("test_cr_loss",cr_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("test_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
@@ -1422,10 +1439,12 @@ class OfflineFeatureBasedDistillation(ImageClassifierBase):
 
 
         total_loss = F.mse_loss(transformed_features_student,features_teacher)
-        accuracy = self.accuracy(predicted_features_student,labels)
+        accuracy_top_1 = self.accuracy_top_1(predicted_features_student,labels)
+        accuracy_top_5 = self.accuracy_top_5(predicted_features_student,labels)
 
 
-        self.log("train_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("train_accuracy",accuracy_top_1,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("train_accuracy_top_5",accuracy_top_5,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("train_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         return total_loss
     
@@ -1460,10 +1479,12 @@ class OfflineFeatureBasedDistillation(ImageClassifierBase):
 
 
         total_loss = F.mse_loss(transformed_features_student,features_teacher)
-        accuracy = self.accuracy(predicted_features_student,labels)
+        accuracy_top_1 = self.accuracy_top_1(predicted_features_student,labels)
+        accuracy_top_5 = self.accuracy_top_5(predicted_features_student,labels)
 
 
-        self.log("validation_accuracy",accuracy,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("validation_accuracy",accuracy_top_1,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
+        self.log("validation_accuracy_top_5",accuracy_top_5,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         self.log("validation_loss",total_loss,on_step=True,on_epoch=True,prog_bar=True,logger=True,batch_size=self.batch_size)
         return total_loss
     

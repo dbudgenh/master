@@ -150,3 +150,14 @@ Nach dem Deckblatt, den text von dem .pdf (C:\Users\david\Desktop\Thesis\master-
 # Transformer metric
 
 # Zotero
+
+#Bei Fertigstellung:
+Sehr geehrte Damen und Herren,
+
+Anbei finden Sie die digitale Version meiner Masterarbeit mit dem Thema „<insert thesis title here>“.
+
+Der zugehörige Code ist auf github unter folgendem Link erreichbar: <insert link to a repo with code>
+
+Mit freundlichen Grüßen,
+<student name>
+<student matriculation number>
