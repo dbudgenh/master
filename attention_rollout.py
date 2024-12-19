@@ -32,8 +32,8 @@ def show_mask_on_image(img, mask):
 def main():
     train_transform, valid_transform, version = default_transforms(is_vision_transformer=True)
     collate_fn = default_collate_fn()
-    test_dataset =  BirdDataset(root_dir='C:/Users/david/Desktop/Python/master/data/',
-                                csv_file='C:/Users/david/Desktop/Python/master/data/birds.csv',
+    test_dataset =  BirdDataset(root_dir='D:/Users/david/Desktop/Python/master/data/',
+                                csv_file='D:/Users/david/Desktop/Python/master/data/birds.csv',
                                 transform=valid_transform,split=Split.TEST)
     
     test_loader = DataLoader(dataset=test_dataset,
@@ -41,7 +41,7 @@ def main():
                             shuffle=True, 
                             num_workers=2)
     #ckpt_path = r'C:\Users\david\Desktop\Python\master\lightning_logs\version_36\checkpoints\VisionTransformer_H_14_Pretrained_fine_tune_V2_epoch=52_validation_loss=1.0414_validation_accuracy=0.988_validation_mcc=0.977.ckpt'
-    ckpt_path = r'C:\Users\david\Desktop\Python\master\lightning_logs\version_23\checkpoints\VisionTransformer_L_16_Pretrained_fine_tune_V2_epoch=94_validation_loss=1.0670_validation_accuracy=0.982_validation_mcc=0.976.ckpt'
+    ckpt_path = r'D:\Users\david\Desktop\Python\master\lightning_logs\version_23\checkpoints\VisionTransformer_L_16_Pretrained_fine_tune_V2_epoch=94_validation_loss=1.0670_validation_accuracy=0.982_validation_mcc=0.976.ckpt'
     
     model = VisionTransformer_L_16.load_from_checkpoint(checkpoint_path=ckpt_path)
     model.eval()
@@ -50,7 +50,7 @@ def main():
 
     attention_rollout = VITAttentionRollout(model=model.model,
                                             attention_layer_name='self_attention$',
-                                            discard_ratio=0.0,
+                                            discard_ratio=0.3,
                                             head_fusion='mean')
     # attention_rollout = VITAttentionGradRollout(model=model.model,
     #                                             attention_layer_name='self_attention$',
@@ -70,6 +70,7 @@ def main():
         visualization = show_cam_on_image(rgb_image, mask, use_rgb=True,image_weight=0.5,colormap=2)
         print(paths[i])
         show_multiple_images(images=[rgb_image,image_cam,visualization],titles=['Original','Heat map', 'Combined'])
+        
 
 
 

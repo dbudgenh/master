@@ -1,4 +1,4 @@
-from models import EfficientNet_B0,NaiveClassifier,EfficientNet_V2_S,EfficientNet_V2_M,EfficientNet_V2_S_Pretrained,EfficientNet_V2_L,VisionTransformer_L_16
+from models import AlexNet, EfficientNet_B0,NaiveClassifier,EfficientNet_V2_S,EfficientNet_V2_M,EfficientNet_V2_S_Pretrained,EfficientNet_V2_L, VisionTransformer_B_16, VisionTransformer_H_14,VisionTransformer_L_16,Resnet_18
 from dataset import BirdDataNPZModule,BirdDataModule,BirdDataset,BirdDataModuleV2,UndersampleSplitDatamodule
 import torch
 import torchvision
@@ -16,9 +16,10 @@ from torchvision.models import EfficientNet_V2_S_Weights,EfficientNet_B0_Weights
 from transformations import default_transforms,default_collate_fn,old_transforms
 
 
-CHECKPOINT_PATH = r'C:\Users\david\Desktop\Python\master\lightning_logs\version_15\checkpoints\EfficientNet_V2_L_V2_epoch=391_validation_loss=1.2287_validation_accuracy=0.96_validation_mcc=0.94.ckpt'
+
+CHECKPOINT_PATH = r'D:\Users\david\Desktop\Python\master\lightning_logs\version_44\checkpoints\AlexNet_V1_epoch=62_validation_loss=1.8134_validation_accuracy=0.869_validation_mcc=0.788.ckpt'
 BATCH_SIZE = 64 #128 is optimal for TPUs, use multiples of 64 that fit into memory
-NUM_WORKERS = 16
+NUM_WORKERS = 1
 EPOCHS = 600
 LEARNING_RATE = 0.5
 MOMENTUM=0.9
@@ -46,11 +47,11 @@ def main():
     datamodule = UndersampleSplitDatamodule(train_transform=train_transform,
                                             valid_transform=valid_transform,
                                             total_dataset=total_dataset,
-                                            random_seed=43,
+                                            random_seed=40,
                                             batch_size=BATCH_SIZE,
                                             num_workers=NUM_WORKERS,
                                             collate_fn=collate_fn)
-    model = VisionTransformer_L_16(lr=LEARNING_RATE,
+    model = VisionTransformer_H_14(lr=LEARNING_RATE,
                               weight_decay=WEIGHT_DECAY,
                               momentum=MOMENTUM,
                               norm_weight_decay=NORM_WEIGHT_DECAY,
@@ -73,7 +74,7 @@ def main():
                                        mode='min')
     
     trainer = pl.Trainer(max_epochs=EPOCHS,callbacks=[model_checkpoint,lr_monitor],precision='bf16-mixed') #
-    trainer.fit(model=model,datamodule=datamodule)#ckpt_path=CHECKPOINT_PATH)
+    trainer.fit(model=model,datamodule=datamodule,)#ckpt_path=CHECKPOINT_PATH)
     model.log_text_to_tensorboard('best_checkpoint_file_name',model_checkpoint.best_model_path)
 
     #switching off inference for test
@@ -92,8 +93,7 @@ def main():
     #         'topk':False,
     #         'bottomk':False,
     #         'randomk':False
-    # }
-
+    # 
 
    
 

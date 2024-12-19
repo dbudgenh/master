@@ -11,7 +11,7 @@ import pytorch_lightning as pl
 from transformations import default_transforms,default_collate_fn
 
 #CHECKPOINT_PATH = 'C:/Users/david/Desktop/Python/master/statistics/EfficientNet_V2_M_Pretrained_Adam/epoch=59_validation_loss=0.6902_validation_accuracy=0.83_validation_mcc=0.82.ckpt'
-CHECKPOINT_PATH = r"C:\Users\david\Desktop\Python\master\lightning_logs\version_25\checkpoints\VisionTransformer_H_14_Pretrained_pre_train_V2_epoch=74_validation_loss=1.3038_validation_accuracy=0.958_validation_mcc=0.945.ckpt"
+CHECKPOINT_PATH = r"D:\Users\david\Desktop\Python\master\lightning_logs\version_25\checkpoints\VisionTransformer_H_14_Pretrained_pre_train_V2_epoch=74_validation_loss=1.3038_validation_accuracy=0.958_validation_mcc=0.945.ckpt"
 LEARNING_RATE_FINE_TUNE = 0.0001 #Should be much lower when fine-tuning
 EPOCHS_FINE_TUNE = 100
 BATCH_SIZE = 32
@@ -27,7 +27,7 @@ def main():
     datamodule = UndersampleSplitDatamodule(train_transform=train_transform,
                                             valid_transform=valid_transform,
                                             total_dataset=total_dataset,
-                                            random_seed=43,
+                                            random_seed=40,
                                             batch_size=BATCH_SIZE,
                                             num_workers=NUM_WORKERS,
                                             collate_fn=collate_fn)
@@ -59,7 +59,7 @@ def main():
     trainer = pl.Trainer(max_epochs=EPOCHS_FINE_TUNE,
                          callbacks=[model_checkpoint,lr_monitor],
                          precision='bf16-mixed')
-    ckpt_path = r"C:\Users\david\Desktop\Python\master\lightning_logs\version_36\checkpoints\VisionTransformer_H_14_Pretrained_fine_tune_V2_epoch=52_validation_loss=1.0414_validation_accuracy=0.988_validation_mcc=0.977.ckpt"
+    ckpt_path = r"D:\Users\david\Desktop\Python\master\lightning_logs\version_86\checkpoints\VisionTransformer_H_14_Pretrained_fine_tune_V2_epoch=85_validation_loss=1.0218_validation_accuracy=0.992_validation_mcc=0.984.ckpt"
     trainer.fit(model=model,datamodule=datamodule,ckpt_path=ckpt_path)
 
 if __name__ == '__main__':

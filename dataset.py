@@ -69,8 +69,8 @@ class BirdDataset(Dataset):
             if split == Split.VALID:
                 bird_frame = bird_frame[bird_frame['data set'] == 'valid']
         self.class_id = torch.tensor(bird_frame['class id'].tolist())
-        self.base_path =np.array(bird_frame['filepaths'].tolist()).astype(np.string_)
-        self.scientific_name = np.array(bird_frame['labels'].tolist()).astype(np.string_)
+        self.base_path =np.array(bird_frame['filepaths'].tolist())
+        self.scientific_name = np.array(bird_frame['labels'].tolist())
         self.root_dir = root_dir
         self.transform = transform
         del bird_frame
@@ -82,15 +82,15 @@ class BirdDataset(Dataset):
     
     def __getitem__(self, idx):
         class_id =  int(self.class_id[idx])
-        base_path = str(self.base_path[idx],encoding='utf-8')
+        base_path = str(self.base_path[idx])
         img_path = os.path.join(self.root_dir,base_path)
         #label = self.bird_frame.iloc[idx,2]
         #dataset = self.bird_frame.iloc[idx,3]
-        #scientific_name = str(self.scientific_name[idx],encoding='utf-8')
+        scientific_name = str(self.scientific_name[idx])
         image = default_loader(img_path) #read_image(img_path) #output has shape (3,224,224)
         if self.transform:
             image = self.transform(image)
-        return image, class_id,img_path
+        return image, class_id,scientific_name#img_path
     
 class BirdDatasetNPZ(Dataset):
     """Dataset containing images of birds. The dataset gets stored in memory, by loading the .npz (numpy compressed file) file
@@ -211,8 +211,10 @@ class UndersampleMinimumDataset(Dataset):
     
     def __init__(self,
                  dataset:Dataset,
+                 seed:int|None = None,
                  transform = None):
         super(UndersampleMinimumDataset,self).__init__()
+        self.seed = seed
         self.dataset = dataset #original dataset
         self.transform = transform #transformations to apply to undersampled dataset
         self.indices = self._undersample_indices(dataset)
@@ -223,6 +225,10 @@ class UndersampleMinimumDataset(Dataset):
         )
 
     def _undersample_indices(self, dataset: Dataset) -> list[int]:
+
+        if self.seed is not None:
+            random.seed(self.seed)
+
         # Count samples and store indices for each class
         class_indices = defaultdict(list)
         if dataset.targets:
@@ -258,6 +264,32 @@ class UndersampleMinimumDataset(Dataset):
     def __getitem__(self, idx):
        return self.undersampled_dataset.__getitem__(idx) 
 
+class FullTestDatamodule(BaseDataModule):
+    def __init__(self,
+                 train_transform,
+                 valid_transform,
+                 total_dataset:Dataset,
+                 batch_size=32,
+                 num_workers=4,
+                 collate_fn=None):
+        super().__init__(train_transform=train_transform,
+                         valid_transform=valid_transform,
+                         batch_size=batch_size,
+                         num_workers=num_workers,
+                         collate_fn=collate_fn)
+        self.total_dataset = total_dataset
+
+    def test_data(self):
+        return Subset(dataset=self.total_dataset,indices=range(len(self.total_dataset)),transform=self.valid_transform)
+    def predict_data(self):
+        return None
+    def train_data(self):
+        return None
+    def valid_data(self):
+        return None
+
+    
+
 class UndersampleSplitDatamodule(BaseDataModule):
     def __init__(self,
                  train_transform,
@@ -279,12 +311,15 @@ class UndersampleSplitDatamodule(BaseDataModule):
         self.test_data_percentage = data_split_ratios[2]
 
         self.random_seed = random_seed #For recreation purposes
-        total_dataset = UndersampleMinimumDataset(dataset=total_dataset)
+        total_dataset = UndersampleMinimumDataset(dataset=total_dataset,seed=random_seed)
         self.data_train, self.data_validation,self.data_test = self._split_dataset(total_dataset,
                                                                     data_split_ratios)
     def _split_dataset(self,
                        total_dataset:Dataset,
                        data_split_ratios:float) -> tuple[Subset,Subset]:
+        
+        # Shuffle class indices before splitting
+        np.random.seed(self.random_seed)
         
         dataset_size = len(total_dataset)
         items_per_class = dataset_size // NUM_CLASSES
@@ -304,8 +339,7 @@ class UndersampleSplitDatamodule(BaseDataModule):
             start_index = class_id * items_per_class
             end_index = start_index + items_per_class
             
-            # Shuffle class indices before splitting
-            np.random.seed(self.random_seed)
+            
             class_indices = np.random.permutation(np.arange(start_index, end_index))
             
             # Split indices for this class into train, valid, test
@@ -336,10 +370,6 @@ class UndersampleSplitDatamodule(BaseDataModule):
                               indices=test_indices,
                               transform=self.valid_transform)
         return train_dataset, valid_dataset, test_dataset
-
-        
-        
-      
 
     def train_data(self):
         return self.data_train

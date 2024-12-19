@@ -11,6 +11,8 @@ from tqdm import tqdm
 from pytorch_lightning.callbacks import TQDMProgressBar
 from torchvision.models import VisionTransformer,ResNet,EfficientNet
 
+from transformations import IMAGENET_STD
+
 MODULE_NAME = 'models'
 def get_model(checkpoint_path):
     checkpoint = torch.load(checkpoint_path)
@@ -107,20 +109,26 @@ def find_largest_version_number(folder_path):
             
     return max_version + 1
 
-def get_roc_curve_figure(fpr, tpr, thresholds,step_size=10,font_size=10):
+def get_roc_curve_figure(fpr, tpr, thresholds, step_size=10, font_size=10):
     plt.figure(figsize=(12, 8))
-    plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve', marker='o',markersize=3)
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve', marker='o', markersize=3)
     plt.plot([0, 1], [0, 1], color='navy', lw=2, label='No skill', linestyle='--')
     plt.xlim([-0.05, 1.05])
     plt.ylim([-0.05, 1.05])
     plt.xlabel('False Positive Rate (FPR)')
     plt.ylabel('True Positive Rate (TPR)')  
-    plt.title(f'Receiver Operating Characteristic (ROC) Curve for class')
+    plt.title(f'Receiver Operating Characteristic (ROC) Curve')
     plt.legend(loc='lower right')
-    # Annotate ROC curve with thresholds
+    
+    # Annotate ROC curve with thresholds, using step_size to control density
     for i, threshold in enumerate(thresholds[::step_size]):
-        plt.scatter(fpr[::step_size][i], tpr[::step_size][i], label='Specific Point', color='black', marker=".", s=10,zorder=2)
-        plt.annotate(f'{threshold:.2f}', (fpr[::step_size][i], tpr[::step_size][i]), textcoords="offset points", xytext=(0, 5), ha='center',fontsize=font_size)
+        plt.scatter(fpr[::step_size][i], tpr[::step_size][i], color='black', marker=".", s=10, zorder=2)
+        plt.annotate(f'{threshold:.2f}', 
+                    (fpr[::step_size][i], tpr[::step_size][i]), 
+                    textcoords="offset points", 
+                    xytext=(0, 5), 
+                    ha='center',
+                    fontsize=font_size)
     result = plt.gcf()
     plt.close()
     return result
@@ -152,9 +160,23 @@ def get_confusion_matrix_figure(computed_confusion):
     cmap = sns.color_palette("light:#Ff4100", as_cmap=True)
 
     fig = sns.heatmap(df_cm,annot=True,cmap=cmap,annot_kws={'fontsize':3}).get_figure()
-    plt.show()
-    plt.close(fig)
+    #plt.show()
+    #plt.close(fig)
     return fig
+
+def get_translation_dict(file_path):
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+    """
+    0: ABBOTTS BABBLER
+    1: ABBOTTS BOOBY
+    ...
+    """
+    translation_dict = {}
+    for line in lines:
+        index, label = line.strip().split(': ')
+        translation_dict[int(index)] = label
+    return translation_dict
 
 def get_k_random_values(tensor, k,device=None):
     """
@@ -184,6 +206,163 @@ def get_k_random_values(tensor, k,device=None):
     values, indices = torch.topk(flattened_tensor[random_indices], k)
 
     return values, random_indices[indices]
+
+import torch
+from scipy.sparse import lil_matrix, csc_matrix
+from scipy.sparse.linalg import spsolve
+
+# Define weights of the surrounding pixels
+neighbors_weights = [((1, 1), 1 / 12),
+                     ((0, 1), 1 / 6),
+                     ((-1, 1), 1 / 12),
+                     ((1, -1), 1 / 12),
+                     ((0, -1), 1 / 6),
+                     ((-1, -1), 1 / 12),
+                     ((1, 0), 1 / 6),
+                     ((-1, 0), 1 / 6)]
+
+class NoisyLinearImputer:
+    def __init__(self, noise=0.01, weighting=neighbors_weights):
+        """
+        Noisy linear imputation.
+        Args:
+            noise (float): Magnitude of noise to add (set to 0 for no noise).
+            weighting (List): List of tuples (offset, weight).
+        """
+        self.noise = noise
+        self.weighting = weighting
+
+    @staticmethod
+    def add_offset_to_indices(indices, offset, mask_shape):
+        """ Add the corresponding offset to the indices. """
+        cord1 = indices % mask_shape[1]
+        cord0 = indices // mask_shape[1]
+        cord0 += offset[0]
+        cord1 += offset[1]
+        valid = ~((cord0 < 0) | (cord1 < 0) | 
+                  (cord0 >= mask_shape[0]) | 
+                  (cord1 >= mask_shape[1]))
+        return valid, indices + offset[0] * mask_shape[1] + offset[1]
+
+    @staticmethod
+    def setup_sparse_system(mask, img, neighbors_weights):
+        """ Vectorized setup for sparse linear system. """
+        maskflt = mask.flatten()
+        imgflat = img.reshape((img.shape[0], -1))
+        indices = np.argwhere(maskflt == 0).flatten()
+        coords_to_vidx = np.zeros(len(maskflt), dtype=int)
+        coords_to_vidx[indices] = np.arange(len(indices))
+        num_equations = len(indices)
+        
+        # System matrix and RHS
+        A = lil_matrix((num_equations, num_equations))
+        b = np.zeros((num_equations, img.shape[0]))
+        
+        sum_neighbors = np.ones(num_equations)
+        for offset, weight in neighbors_weights:
+            valid, new_coords = NoisyLinearImputer.add_offset_to_indices(
+                indices, offset, mask.shape)
+            valid_coords = new_coords[valid]
+            valid_ids = np.argwhere(valid).flatten()
+            
+            has_values_coords = valid_coords[maskflt[valid_coords] > 0.5]
+            has_values_ids = valid_ids[maskflt[valid_coords] > 0.5]
+            b[has_values_ids, :] -= weight * imgflat[:, has_values_coords].T
+            
+            has_no_values = valid_coords[maskflt[valid_coords] < 0.5]
+            variable_ids = coords_to_vidx[has_no_values]
+            has_no_values_ids = valid_ids[maskflt[valid_coords] < 0.5]
+            A[has_no_values_ids, variable_ids] = weight
+            
+            sum_neighbors[np.argwhere(~valid).flatten()] -= weight
+
+        A[np.arange(num_equations), np.arange(num_equations)] = -sum_neighbors
+        return A, b
+
+    def __call__(self, img, mask):
+        """ Linear imputation with added noise. """
+        imgflt = img.reshape(img.shape[0], -1)
+        maskflt = mask.reshape(-1)
+        indices_linear = np.argwhere(maskflt == 0).flatten()
+        
+        A, b = NoisyLinearImputer.setup_sparse_system(
+            mask.cpu().numpy(), img.cpu().numpy(), self.weighting)
+        res = torch.tensor(spsolve(csc_matrix(A), b), dtype=torch.float)
+
+        img_infill = imgflt.clone()
+        noise = self.noise * torch.tensor(IMAGENET_STD,device=img.device).view(-1,1) * torch.randn_like(res.t())
+        img_infill[:, indices_linear] = res.t() + noise
+
+        return img_infill.reshape_as(img)
+
+def perturb_image(rgb_image, label, heatmap, model, remove_percent=20, isMostRelevant=True, use_smoothing=True):
+    """
+    Perturb image by removing a percentage of pixels using Noisy Linear Imputation.
+    Args:
+        rgb_image (torch.Tensor): Input image tensor (C, H, W).
+        label (int): Target label.
+        heatmap (np.array): Heatmap indicating pixel relevance.
+        model (torch.nn.Module): Model to evaluate.
+        remove_percent (float): Percentage of pixels to remove.
+        isMostRelevant (bool): Remove most or least relevant pixels.
+        use_smoothing (bool): Use smoothing or binary mask.
+    """
+    if heatmap.ndim == 3 and heatmap.shape[-1] == 3:
+        heatmap = np.mean(heatmap, axis=-1)
+
+    threshold_value = np.percentile(heatmap, 
+                                    100 - remove_percent if isMostRelevant else remove_percent)
+    mask = heatmap >= threshold_value if isMostRelevant else heatmap <= threshold_value
+    mask_tensor = torch.from_numpy(~mask).to('cuda')
+    
+    model.eval()
+    with torch.no_grad():
+        original_output = model(rgb_image.unsqueeze(0).to('cuda'))
+        original_score = torch.softmax(original_output, dim=1)[0, label].item()
+        print(original_score)
+    
+    if use_smoothing:
+        imputer = NoisyLinearImputer(noise=0.1)
+        perturbed_image = imputer(rgb_image.cpu(), mask_tensor.cpu())
+    else:
+        perturbed_image = rgb_image.cuda() * mask_tensor
+
+    with torch.no_grad():
+        perturbed_output = model(perturbed_image.unsqueeze(0).to('cuda'))
+        perturbed_score = torch.softmax(perturbed_output, dim=1)[0, label].item()
+        print(perturbed_score)
+
+    prob_difference = original_score - perturbed_score
+    return prob_difference, perturbed_image
+
+def process_in_batches(batch_size, attribution_function, input_data, **kwargs):
+    """
+    Processes input data in batches using the specified attribution function.
+
+    Parameters:
+        batch_size (int): The size of each batch to process.
+        attribution_function (callable): The attribution function to apply (e.g., noise_tunnel.attribute).
+        input_data (torch.Tensor): The input data tensor to process.
+        **kwargs: Additional parameters to pass to the attribution function.
+
+    Returns:
+        torch.Tensor or numpy.ndarray: Concatenated results of the attribution function applied to all batches.
+    """
+    results = []
+
+    for i in range(0, len(input_data), batch_size):
+        print(f"Processing batch {i // batch_size + 1} of {len(input_data) // batch_size + 1}")
+        batch = input_data[i:i + batch_size]
+        batch_result = attribution_function(batch, **kwargs)
+        results.append(batch_result)
+
+    # Check if results are numpy arrays
+    if isinstance(results[0], np.ndarray):
+        return np.concatenate(results, axis=0)
+    
+    # Default to torch.cat for torch tensors
+    return torch.cat(results, dim=0)
+
 def main():
     pass
 

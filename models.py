@@ -1,19 +1,21 @@
+import math
 from typing import Any, Optional
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch.nn as nn
 import torch 
 import torch.nn.functional as F
 from torch.nn.modules import Module
-from torchvision.models import efficientnet_b0,efficientnet_v2_s,efficientnet_v2_m,efficientnet_v2_l,vit_l_16,vit_h_14,EfficientNet_V2_S_Weights,EfficientNet_V2_M_Weights,EfficientNet_B0_Weights,EfficientNet_V2_L_Weights,ViT_L_16_Weights
+from torchvision.models import efficientnet_b0,efficientnet_v2_s,efficientnet_v2_m,efficientnet_v2_l,vit_l_16,vit_h_14,alexnet,resnet50,EfficientNet_V2_S_Weights,EfficientNet_V2_M_Weights,EfficientNet_B0_Weights,EfficientNet_V2_L_Weights,ViT_L_16_Weights
 from torchvision.models import resnet18,resnet101
 from torchvision.models import vit_b_16,ViT_B_16_Weights,ViT_H_14_Weights
 import pytorch_lightning as pl
 import torch.optim as optim
-from torchmetrics import Accuracy,F1Score,MatthewsCorrCoef,ConfusionMatrix,ROC,AUROC
+from torchmetrics import Accuracy,F1Score,MatthewsCorrCoef,ConfusionMatrix,ROC,AUROC,Precision,Recall
 from lion_pytorch import Lion
 from abc import ABC,abstractmethod
 from torch.optim import AdamW,SGD
 from torch.optim.lr_scheduler import CosineAnnealingLR,CosineAnnealingWarmRestarts,ExponentialLR,ReduceLROnPlateau,StepLR,LinearLR,SequentialLR
+import image_utils
 from knowledge_distillation import knowledge_distillation_loss
 import utils
 from pytorch_lightning.loggers.tensorboard import TensorBoardLogger
@@ -21,7 +23,7 @@ from sklearn.metrics import classification_report
 from tqdm import tqdm
 from functools import partial
 from matplotlib.colors import LinearSegmentedColormap
-from captum.attr import IntegratedGradients,GuidedGradCam,GradientShap,Saliency,NoiseTunnel
+from captum.attr import IntegratedGradients,GuidedGradCam,GradientShap,Saliency,NoiseTunnel,Occlusion
 from captum.attr import visualization as viz
 from pytorch_grad_cam import GradCAM, ScoreCAM, HiResCAM, EigenCAM, AblationCAM, GradCAMPlusPlus, GradCAMElementWise
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget,ClassifierOutputSoftmaxTarget
@@ -32,9 +34,10 @@ from transformations import denormalize
 from torchvision.transforms import transforms
 from transformations import IMAGENET_MEAN,IMAGENET_STD
 from image_utils import create_multiple_images
+import json
 
 NUM_CLASSES = 524
-TOP_K = 10
+TOP_K = 50
 
 
 class ImageClassifierBase(ABC,pl.LightningModule):
@@ -81,6 +84,9 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         self.confusion_matrix = ConfusionMatrix(task="multiclass",num_classes=NUM_CLASSES)
         self.roc_curve = ROC(task='multiclass',num_classes=NUM_CLASSES)
         self.auroc = AUROC(task='multiclass',num_classes=NUM_CLASSES)
+        self.recall = Recall(task='multiclass',num_classes=NUM_CLASSES,average='macro')
+        self.precision = Precision(task='multiclass',num_classes=NUM_CLASSES,average='macro')
+        self.f1 = F1Score(task='multiclass',num_classes=NUM_CLASSES,average='macro')
         
         #self.logger:TensorBoardLogger = TensorBoardLogger(save_dir=':/',log_graph=True)
         self.test_step_prediction = []
@@ -99,7 +105,9 @@ class ImageClassifierBase(ABC,pl.LightningModule):
             'captum_alg':True,
             'topk':True,
             'bottomk':True,
-            'randomk':True
+            'randomk':True,
+            'all':False,
+            'filter_type':None
             }
 
         self.save_hyperparameters({
@@ -178,9 +186,11 @@ class ImageClassifierBase(ABC,pl.LightningModule):
             )
         if self.lr_scheduler == 'cosineannealinglr':
             scheduler = CosineAnnealingLR(optimizer, T_max=self.epochs - self.lr_warmup_epochs)
+        elif self.lr_scheduler == 'cosineannealingwarmrestarts':
+            scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=self.epochs - self.lr_warmup_epochs,T_mult=1)
         else:
             raise RuntimeError(
-                f"Invalid lr scheduler '{self.lr_scheduler}'. Only cosineannealinglr is supported."
+                f"Invalid lr scheduler '{self.lr_scheduler}'. Only cosineannealinglr or cosineannealingwarmrestarts is supported."
             )
         if self.lr_warmup_epochs > 0:
             if self.lr_warmup_method == 'linear':
@@ -235,13 +245,11 @@ class ImageClassifierBase(ABC,pl.LightningModule):
 
 
         self.log("validation_accuracy",accuracy_top_1,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
-        self.log("validation_accuracy",accuracy_top_5,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
+        self.log("validation_accuracy_top_5",accuracy_top_5,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         self.log("validation_loss",loss,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         self.log("validation_mcc",mcc,on_step=True,on_epoch=True,prog_bar=True,batch_size=self.batch_size)
         
         return loss
-
-
 
     def test_step(self,batch,batch_idx):
         inputs, labels = batch
@@ -250,16 +258,35 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         accuracy_top_1 = self.accuracy_top_1(output,labels)
         accuracy_top_5 = self.accuracy_top_5(output,labels)
         mcc = self.mcc(output,labels)
+        f1 = self.f1(output,labels)
+        recall = self.recall(output,labels)
+        precision = self.precision(output,labels)
 
         #predictions = torch.argmax(output,dim=1)
         self.log("test_accuracy",accuracy_top_1,prog_bar=True,batch_size=self.batch_size)
         self.log("test_accuracy_top_5",accuracy_top_5,prog_bar=True,batch_size=self.batch_size)
         self.log("test_loss",loss,prog_bar=True,batch_size=self.batch_size)
         self.log("test_mcc",mcc,prog_bar=True,batch_size=self.batch_size)
+        self.log("test_f1",f1,prog_bar=True,batch_size=self.batch_size)
+        self.log("test_recall",recall,prog_bar=True,batch_size=self.batch_size)
+        self.log("test_precision",precision,prog_bar=True,batch_size=self.batch_size)
 
-        self.test_step_prediction.append(output)
-        self.test_step_label.append(labels)
-        self.test_step_input.append(inputs)
+        if self.log_config['testing']:
+            #only add misclassified samples
+            predictions = output.argmax(dim=1)  # Get the index of the max logit (class prediction)
+            misclassified_mask = predictions != labels
+
+            misclassified_input = inputs[misclassified_mask]
+            misclassified_labels = labels[misclassified_mask]
+            misclassified_prediction= output[misclassified_mask]
+
+            self.test_step_prediction.append(misclassified_prediction)
+            self.test_step_label.append(misclassified_labels)
+            self.test_step_input.append(misclassified_input)
+        else:
+            self.test_step_prediction.append(output)
+            self.test_step_label.append(labels)
+            self.test_step_input.append(inputs)
         return loss
     
 
@@ -267,22 +294,51 @@ class ImageClassifierBase(ABC,pl.LightningModule):
         all_predictions = torch.cat(self.test_step_prediction) #(2625,NUM_CLASSES)
         all_labels = torch.cat(self.test_step_label) # (2625)
         all_images = torch.cat(self.test_step_input) # (2625,3,224,224)
+        
 
         all_predictions_probabilities = torch.softmax(all_predictions,dim=1) #(2625,NUM_CLASSES)
-        all_predictions_max_probabilities = torch.max(all_predictions,dim=1) #(2625)
+        all_predictions_max_probabilities_values,all_predictions_max_probabilities_indices = torch.max(all_predictions_probabilities,dim=1) #(2625)
+        all_predictions_idx = torch.argmax(all_predictions_probabilities,dim=1) #(2625)
+
+        # Determine which filter to apply based on the configuration
+        filter_type = self.log_config.get('filter_type', None)  # can be 'misclassified', 'correct', or None
+        if filter_type == 'misclassified':
+            filter_mask = all_predictions_idx != all_labels
+        elif filter_type == 'correct':
+            filter_mask = all_predictions_idx == all_labels
+        else:
+            # No filtering
+            filter_mask = None
+
+        # Apply filtering if a mask is set
+        if filter_mask is not None:
+            all_predictions = all_predictions[filter_mask]
+            all_labels = all_labels[filter_mask]
+            all_images = all_images[filter_mask]
+            all_predictions_probabilities = all_predictions_probabilities[filter_mask]
+            all_predictions_max_probabilities_values = all_predictions_max_probabilities_values[filter_mask]
+            all_predictions_max_probabilities_indices = all_predictions_max_probabilities_indices[filter_mask]
+            all_predictions_idx = all_predictions_idx[filter_mask]
+        print(f'There are {len(all_predictions)} samples to analyze')
+
+
 
         top_k = partial(torch.topk,k = TOP_K)
         bottom_k = partial(torch.topk, k=TOP_K, largest=False)
         rand_k = partial(utils.get_k_random_values,k=TOP_K,device="cuda")
+        all = partial(torch.topk,k=len(all_predictions))
 
         selection_functions = []
         selection_functions += [(top_k,"Top")] if self.log_config['topk'] else []
-        selection_functions += [bottom_k,"Bottom"] if self.log_config['bottomk'] else []
-        selection_functions += [rand_k,"Random"] if self.log_config['randomk'] else []
+        selection_functions += [(bottom_k,"Bottom")] if self.log_config['bottomk'] else []
+        selection_functions += [(rand_k,"Random")] if self.log_config['randomk'] else []
+        selection_functions += [(all,"All")] if self.log_config['all'] else []
 
-        top_k_propabilities = torch.topk(all_predictions_max_probabilities.values,10) #(k)
-        bottom_k_propabilities = torch.topk(all_predictions_max_probabilities.values,10,largest=False) #(k)
-        all_predictions_idx = torch.argmax(all_predictions_probabilities,dim=1) #(2625)
+        top_k_propabilities = torch.topk(all_predictions_max_probabilities_values,10) #(k)
+        bottom_k_propabilities = torch.topk(all_predictions_max_probabilities_values,10,largest=False) #(k)
+        translation_dict = utils.get_translation_dict('class_mapping.txt')
+        xai_results = []
+        
         
         if utils.is_vision_transformer(self.model):
             target_layers = [self.model.encoder.layers[-1].ln_1]
@@ -294,107 +350,258 @@ class ImageClassifierBase(ABC,pl.LightningModule):
             target_layers = [self.model.features[-1]]
             reshape_transform = None
         else:
-            target_layers = [self.model.layer4[-1]]
+            #target_layers = [self.model.layer4[-1]]
+            target_layers = None
             reshape_transform = None
 
-        
-        pytorch_gradcam_cams = [
-            GradCAM(model=self.model,target_layers=target_layers,use_cuda=True,reshape_transform=reshape_transform),
-            HiResCAM(model=self.model,target_layers=target_layers,use_cuda=True,reshape_transform=reshape_transform),
-            AblationCAM(model=self.model,target_layers=target_layers,use_cuda=True,reshape_transform=reshape_transform),
-            GradCAMPlusPlus(model=self.model,target_layers=target_layers,use_cuda=True,reshape_transform=reshape_transform),
-            GradCAMElementWise(model=self.model,target_layers=target_layers,use_cuda=True,reshape_transform=reshape_transform)
-        ]
+        if True:
+            if self.log_config['pytorch_cam']:
+                pytorch_gradcam_cams = [
+                    GradCAM(model=self.model,target_layers=target_layers,reshape_transform=reshape_transform),
+                    HiResCAM(model=self.model,target_layers=target_layers,reshape_transform=reshape_transform),
+                    #AblationCAM(model=self.model,target_layers=target_layers,reshape_transform=reshape_transform),
+                    GradCAMPlusPlus(model=self.model,target_layers=target_layers,reshape_transform=reshape_transform),
+                    GradCAMElementWise(model=self.model,target_layers=target_layers,reshape_transform=reshape_transform)
+                ]
+            if self.log_config['captum_alg']:
+                #Captum init cams
+                captum_alg = [
+                    IntegratedGradients(self.model),
+                    #GuidedGradCam(model=self.model,layer=target_layers[0]),
+                    Saliency(self.model),
+                    Occlusion(self.model),
+                ]
 
-        #Captum init cams
-        captum_alg = [
-            IntegratedGradients(self.model),
-            #GuidedGradCam(model=self.model,layer=target_layers[0]),
-            Saliency(self.model)
-        ]
+            #Create the confusion matrix
+            if self.log_config['confusion_matrix']:
+                print('Computing confusion matrix...')
+                computed_confusion = self.confusion_matrix(all_predictions,all_labels)
 
-        #Create the confusion matrix
-        if self.log_config['confusion_matrix']:
-            print('Computing confusion matrix...')
-            computed_confusion = self.confusion_matrix(all_predictions,all_labels)
-            fig = utils.get_confusion_matrix_figure(computed_confusion=computed_confusion.cpu().numpy().astype(int))
-            self.logger.experiment.add_figure('Confusion matrix',fig,self.current_epoch)
+                #fig = utils.get_confusion_matrix_figure(computed_confusion=computed_confusion.cpu().numpy().astype(int))
+                #elf.logger.experiment.add_figure('Confusion matrix',fig,self.current_epoch)
+                cm_normalized = computed_confusion.float() / computed_confusion.sum(1).view(-1, 1)
+                misclassification_distribution = {}
 
-        if self.log_config['roc_curve']:
-            #Create ROC-Curve
-            fpr, tpr, thresholds = self.roc_curve(all_predictions,all_labels)
-            #For each class, create a seperate roc-curve
-            for i in tqdm(range(NUM_CLASSES),desc="ROC curve"):
-                fig = utils.get_roc_curve_figure(fpr=fpr[i],tpr=tpr[i],thresholds=thresholds[i])
-                self.logger.experiment.add_figure(f'ROC curve for class {i}',fig,self.current_epoch)
+                # Collect misclassification details
+                for i in range(NUM_CLASSES):
+                    misclassified_as = {
+                        j: {
+                            "count": computed_confusion[i, j].item(),
+                            "percentage": cm_normalized[i, j].item() * 100
+                        }
+                        for j in range(NUM_CLASSES)
+                        if i != j and computed_confusion[i, j] > 0
+                    }
+                    
+                    total_misclassified = sum(computed_confusion[i, j].item() for j in range(NUM_CLASSES) if i != j)
+                    misclassification_distribution[i] = {
+                        "total_misclassified": total_misclassified,
+                        "misclassified_as": misclassified_as
+                    }
 
-        if self.log_config['auroc']:
-            #Create AUROC
-            print('Computing Area under ROC')
-            auroc = self.auroc(all_predictions,all_labels)
-            self.log('Area under ROC',auroc,batch_size=self.batch_size)
+                # Sort the classes by total misclassifications in descending order
+                sorted_misclassification_distribution = sorted(
+                    misclassification_distribution.items(),
+                    key=lambda x: x[1]['total_misclassified'],
+                    reverse=True
+                )
 
-        #Create classification report
-        if self.log_config['classification_report']:
-            print('Computing classification report')
-            report = classification_report(all_labels.cpu(),torch.argmax(all_predictions,dim=1).cpu())
-            self.logger.experiment.add_text('Classification report',report)
-
-        for function, suffix in selection_functions:
-            best_k_probabilities = function(all_predictions_max_probabilities.values)
-            best_propabilities = best_k_probabilities[0]
-            best_idx = best_k_probabilities[1]
-            best_images = all_images[best_idx]
-            best_labels = all_labels[best_idx]
-            
-            #get prediction
-            best_predictions = all_predictions_idx[best_idx]
-            #save/log softmax vector for each idx in tensorboard
-            best_softmax_idx = all_predictions_probabilities[best_idx]
-            #get ground truth probability for each of the top_k softmaxvectors
-            best_gt_prob = best_softmax_idx[torch.arange(TOP_K),best_labels]
-
-            targets_metric = [ClassifierOutputSoftmaxTarget(class_id) for class_id in best_predictions]
-            targets_cam = [ClassifierOutputTarget(class_id) for class_id in best_predictions]
-                                                    
-            #pytorch-cam
-            if self.log_config['pytorch_cam']:                                    
-                resize = transforms.Resize(224)
-                rgb_images = resize(best_images)
-                denormalized_images = denormalize(rgb_images,IMAGENET_MEAN,IMAGENET_STD)
-        
-                #apply pytorch_gradcam_cam
-                for cam in pytorch_gradcam_cams:
-                    with torch.enable_grad():
-                        cam_images = cam(input_tensor=best_images, targets=targets_cam,aug_smooth=False,eigen_smooth=False)
-                    cam_name = str(type(cam)).split(".")[-1][:-2]
-                    for idx, cam_image in enumerate(cam_images):
-                        permuted_image = denormalized_images[idx].permute(1,2,0).cpu()
-                        visualization = show_cam_on_image(permuted_image.numpy().astype(np.float32)/255, cam_image, use_rgb=True,image_weight=0.5)
-                        result = create_multiple_images(images=[permuted_image,cam_image,visualization],titles=['Original','Heat map', 'Combined'])
-                        self.logger.experiment.add_figure(f'{suffix}_{TOP_K}/{cam_name} *** Groundtruth: label: {best_labels[idx]} probability: {best_gt_prob[idx]:.2f} *** Prediction: label: {best_predictions[idx]} probability: {best_propabilities[idx]:.2f} *** Idx: {best_idx[idx]}',result)
-            #captum-alg
-            if self.log_config['captum_alg']:  
-                for alg in captum_alg:
-                    prediction_score,pred_label_idx = torch.topk(best_predictions,1)
-                    cam_name = str(type(alg)).split(".")[-1][:-2]
-                    attributions = alg.attribute(best_images,target=pred_label_idx) #brauchen wir variable?
-                    noise_tunnel = NoiseTunnel(alg)
-                    if cam_name == "IntegratedGradients":
-                        attributions_nt = noise_tunnel.attribute(best_images, nt_samples=10, nt_type='smoothgrad_sq', target=pred_label_idx,internal_batch_size=TOP_K)
+                # Format the misclassification distribution into a readable string
+                distribution_text = "Misclassification Distribution (Sorted by Total Misclassified):\n"
+                for class_id, data in sorted_misclassification_distribution:
+                    distribution_text += f"Class {class_id}:\n"
+                    distribution_text += f"  Total Misclassified: {data['total_misclassified']}\n"
+                    if data["misclassified_as"]:
+                        distribution_text += "  Misclassified As:\n"
+                        for misclass_id, details in data["misclassified_as"].items():
+                            distribution_text += (
+                                f"    Class {misclass_id}: "
+                                f"{details['count']} samples ({details['percentage']:.2f}%)\n"
+                            )
                     else:
-                        attributions_nt = noise_tunnel.attribute(best_images, nt_type='smoothgrad_sq', target=pred_label_idx)
-                        
-                    for idx, alg_image in enumerate(attributions_nt):
-                        result = viz.visualize_image_attr_multiple(np.transpose(alg_image.cpu().detach().numpy(), (1,2,0)),
-                                            np.transpose(denormalized_images[idx].cpu().detach().numpy(), (1,2,0)),
-                                            methods=["original_image", "heat_map",'masked_image','alpha_scaling','blended_heat_map'],
-                                            signs=['all', 'positive','positive','positive','positive'],
-                                            titles=['Original','Heatmap','Masked-image','Alpha-scaling','Blended heatmap'],
-                                            fig_size=(12,8),
-                                            show_colorbar=True)
-                        
-                        self.logger.experiment.add_figure(f'{suffix}_{TOP_K}/Captum_{cam_name} *** Groundtruth: label: {best_labels[idx]}) gt_prob: {best_gt_prob[idx]:.2f} *** Prediction: label: {best_predictions[idx]}) probability: {best_propabilities[idx]:.2f} *** Idx: {best_idx[idx]}',result[0])
+                        distribution_text += "  No Misclassifications\n"
+                    distribution_text += "\n"
+
+                # Log the readable text to TensorBoard
+                self.logger.experiment.add_text('Misclassification Distribution', distribution_text)
+
+            if self.log_config['roc_curve']:
+                #Create ROC-Curve
+                fpr, tpr, thresholds = self.roc_curve(all_predictions,all_labels)
+                #For each class, create a seperate roc-curve
+                for i in tqdm(range(NUM_CLASSES),desc="ROC curve"):
+                    fig = utils.get_roc_curve_figure(fpr=fpr[i].cpu().numpy(),tpr=tpr[i].cpu().numpy(),thresholds=thresholds[i].cpu().numpy())
+                    self.logger.experiment.add_figure(f'ROC curve for class {i}',fig,self.current_epoch)
+
+            if self.log_config['auroc']:
+                #Create AUROC
+                print('Computing Area under ROC')
+                auroc = self.auroc(all_predictions,all_labels)
+                self.log('Area under ROC',auroc,batch_size=self.batch_size)
+
+            #Create classification report
+            if self.log_config['classification_report']:
+                print('Computing classification report')
+                report = classification_report(all_labels.cpu(),torch.argmax(all_predictions,dim=1).cpu())
+                self.logger.experiment.add_text('Classification report',report)
+
+            if self.log_config['topk'] or self.log_config['bottomk'] or self.log_config['randomk'] or self.log_config['all']:
+                for function, suffix in selection_functions:
+                    best_k_probabilities = function(all_predictions_max_probabilities_values)
+                    best_propabilities = best_k_probabilities[0]
+                    best_idx = best_k_probabilities[1]
+                    best_images = all_images[best_idx]
+                    best_labels = all_labels[best_idx]
+                    
+                    #get prediction
+                    best_predictions = all_predictions_idx[best_idx]
+                    #save/log softmax vector for each idx in tensorboard
+                    best_softmax_idx = all_predictions_probabilities[best_idx]
+                    #get ground truth probability for each of the top_k softmaxvectors
+                    best_gt_prob = best_softmax_idx[torch.arange(best_softmax_idx.size(0)),best_labels]
+
+                    targets_metric = [ClassifierOutputSoftmaxTarget(class_id) for class_id in best_predictions]
+                    targets_cam = [ClassifierOutputTarget(class_id) for class_id in best_predictions]
+
+                    resize = transforms.Resize(224)
+                    rgb_images = resize(best_images)
+                    denormalized_images = denormalize(rgb_images,IMAGENET_MEAN,IMAGENET_STD)
+                                                            
+                    #pytorch-cam
+                    if self.log_config['pytorch_cam']:                                    
+                        #apply pytorch_gradcam_cam
+                        for cam in pytorch_gradcam_cams:
+                            print(f"Computing {cam.__class__.__name__}")
+                            with torch.enable_grad():
+                                #cam_images = cam(input_tensor=best_images, targets=targets_cam,aug_smooth=False,eigen_smooth=False)
+                                cam_images = utils.process_in_batches(batch_size=8,
+                                                                    attribution_function=cam,
+                                                                    input_data=best_images,
+                                                                    targets=targets_cam,
+                                                                    aug_smooth=False,
+                                                                    eigen_smooth=False,
+                                                                    )
+                            cam_name = str(type(cam)).split(".")[-1][:-2]
+                            for idx, cam_image in enumerate(cam_images):
+                                permuted_image = denormalized_images[idx].permute(1,2,0).cpu().numpy().astype(np.float32)/255
+                                cam_image_3ch = np.stack([cam_image, cam_image, cam_image], axis=-1)
+                                
+                                for isMostRelevant in [True,False]:
+                                    for use_smoothing in [True,False]:
+                                        xai_metric = 'ROAD' if use_smoothing else 'Pixel-Flip'
+                                        xai_metric += ' (MoRF)' if isMostRelevant else ' (LeRF)'
+                                        print(f"Computing pertubation for {xai_metric}")
+                                        score, pertubation = utils.perturb_image(best_images[idx], best_predictions[idx], cam_image, self.model, remove_percent=45,isMostRelevant=isMostRelevant,use_smoothing=use_smoothing)
+                                        arrow = '↓' if score > 0 else '↑'
+                                        print(f"{xai_metric}: Predicted: {best_predictions[idx]} Probability prediction {best_propabilities[idx]*100:.2f}%({arrow} {abs(score)*100:.2f}%) Groundtruth: {best_labels[idx]} Probability groundtruth: {best_gt_prob[idx]*100:.2f}%")
+                                        fig = image_utils.show_image_from_tensor(denormalize(pertubation.cpu(),IMAGENET_MEAN,IMAGENET_STD),show=False)
+                                        gt_label_name = translation_dict[best_labels[idx].item()]
+                                        pred_label_name = translation_dict[best_predictions[idx].item()]
+
+                                        self.logger.experiment.add_figure(f'{suffix}_{TOP_K}/{cam_name} {xai_metric}: *** Groundtruth label: {best_labels[idx]}({gt_label_name}) Probability: {best_gt_prob[idx]*100:.2f} *** Predicted label: {best_predictions[idx]}({pred_label_name}) Probability: {best_propabilities[idx]*100:.2f} ({arrow} {abs(score)*100:.2f}%) *** Idx: {best_idx[idx]}',fig)
+                                        xai_results.append({
+                                            'idx':best_idx[idx].item() if hasattr(best_idx[idx], 'item') else best_idx[idx],
+                                            'cam':cam_name,
+                                            'xai_metric':xai_metric,
+                                            'pertubation_value':score,
+                                            'gt_label_name':gt_label_name,
+                                            'pred_label_name':pred_label_name,
+                                            'gt_prob':best_gt_prob[idx].item() if hasattr(best_gt_prob[idx], 'item') else best_gt_prob[idx],
+                                            'pred_prob':best_propabilities[idx].item() if hasattr(best_propabilities[idx], 'item') else best_propabilities[idx],
+                                        })
+
+                                fig, axes = viz.visualize_image_attr_multiple(cam_image_3ch,
+                                    permuted_image,
+                                    methods=["original_image", "heat_map",'masked_image','alpha_scaling','blended_heat_map'],
+                                    signs=['all', 'positive','positive','positive','positive'],
+                                    #titles=['Original','Heatmap','Masked-image','Alpha-scaling','Blended heatmap'],
+                                    #cmap=cmap,
+                                    fig_size=(16,12),
+                                    use_pyplot=False,
+                                    show_colorbar=True,
+                                )
+                                self.logger.experiment.add_figure(f'{suffix}_{TOP_K}/{cam_name} *** Groundtruth label: {best_labels[idx]}({gt_label_name}) Probability: {best_gt_prob[idx]*100:.2f} *** Predicted label: {best_predictions[idx]}({pred_label_name}) Probability: {best_propabilities[idx]*100:.2f} *** Idx: {best_idx[idx]}',fig)
+                    
+                    #captum-alg
+                    if self.log_config['captum_alg']:  
+                        for alg in captum_alg:
+                            prediction_score,pred_label_idx = torch.topk(best_predictions,1)
+                            cam_name = str(type(alg)).split(".")[-1][:-2]
+                            print(f"Computing {cam_name}")
+                            #attributions = alg.attribute(best_images,target=pred_label_idx) #brauchen wir variable?
+                            noise_tunnel = NoiseTunnel(alg)
+                            if cam_name == "IntegratedGradients":
+                                #attributions_nt = noise_tunnel.attribute(best_images, nt_samples=5,nt_samples_batch_size=2, nt_type='smoothgrad_sq', target=pred_label_idx,internal_batch_size=1,n_steps=50)
+                                attributions_nt = utils.process_in_batches(batch_size=16,
+                                                                    attribution_function=noise_tunnel.attribute,
+                                                                    input_data=best_images,
+                                                                    nt_samples=25,
+                                                                    nt_samples_batch_size=1,
+                                                                    nt_type='smoothgrad_sq',
+                                                                    target=pred_label_idx,
+                                                                    internal_batch_size=1,
+                                                                    n_steps=200)
+                            elif cam_name == "Occlusion":
+                               # attributions_nt = noise_tunnel.attribute(best_images, nt_samples=5,nt_samples_batch_size=2, nt_type='smoothgrad_sq', target=pred_label_idx,sliding_window_shapes=(3,15,15),strides=(3,6,6))
+                                attributions_nt = utils.process_in_batches(batch_size=16,
+                                                                    attribution_function=noise_tunnel.attribute,
+                                                                    input_data=best_images,
+                                                                    nt_samples=25,
+                                                                    nt_samples_batch_size=1,
+                                                                    nt_type='smoothgrad_sq',
+                                                                    target=pred_label_idx,
+                                                                    sliding_window_shapes=(3,15,15),
+                                                                    strides=(3,6,6),
+                                                                    )
+                            else:
+                                #attributions_nt = noise_tunnel.attribute(best_images,nt_samples=5,nt_samples_batch_size=2, nt_type='smoothgrad_sq', target=pred_label_idx)
+                                attributions_nt = utils.process_in_batches(batch_size=16,
+                                                                    attribution_function=noise_tunnel.attribute,
+                                                                    input_data=best_images,
+                                                                    nt_samples=25,
+                                                                    nt_samples_batch_size=1,
+                                                                    nt_type='smoothgrad_sq',
+                                                                    target=pred_label_idx,
+                                                                    )
+                                
+                            for idx, alg_image in enumerate(attributions_nt):
+                                transposed_alg_img = np.transpose(alg_image.cpu().detach().numpy(), (1,2,0))
+                                permuted_image = denormalized_images[idx].permute(1,2,0).cpu().numpy().astype(np.float32)/255
+                                for isMostRelevant in [True,False]:
+                                    for use_smoothing in [True,False]:
+                                        xai_metric = 'ROAD' if use_smoothing else 'Pixel-Flip'
+                                        xai_metric += ' (MoRF)' if isMostRelevant else ' (LeRF)'
+                                        print(f"Computing pertubation for {xai_metric}")
+                                        score, pertubation = utils.perturb_image(best_images[idx], best_predictions[idx], transposed_alg_img, self.model, remove_percent=45,isMostRelevant=isMostRelevant,use_smoothing=use_smoothing)
+                                        arrow = '↓' if score > 0 else '↑'
+                                        print(f"Predicted: {best_predictions[idx]} Probability prediction: {best_propabilities[idx]*100:.2f}%({arrow} {abs(score)*100:.2f}%) Groundtruth: {best_labels[idx]} Probability groundtruth: {best_gt_prob[idx]*100:.2f}%")
+                                        fig = image_utils.show_image_from_tensor(denormalize(pertubation.cpu(),IMAGENET_MEAN,IMAGENET_STD),show=False)
+                                        gt_label_name = translation_dict[best_labels[idx].item()]
+                                        pred_label_name = translation_dict[best_predictions[idx].item()]
+
+                                        self.logger.experiment.add_figure(f'{suffix}_{TOP_K}/Captum_{cam_name} {xai_metric}: *** Groundtruth label: {best_labels[idx]}({gt_label_name}) Probability: {best_gt_prob[idx]*100:.2f} *** Predicted label: {best_predictions[idx]}({pred_label_name}) Probability: {best_propabilities[idx]*100:.2f} ({arrow} {abs(score)*100:.2f}%) *** Idx: {best_idx[idx]}',fig)
+                                        xai_results.append({
+                                            'idx':best_idx[idx].item() if hasattr(best_idx[idx], 'item') else best_idx[idx],
+                                            'cam':cam_name,
+                                            'xai_metric':xai_metric,
+                                            'pertubation_value':score,
+                                            'gt_label_name':gt_label_name,
+                                            'pred_label_name':pred_label_name,
+                                            'gt_prob':best_gt_prob[idx].item() if hasattr(best_gt_prob[idx], 'item') else best_gt_prob[idx],
+                                            'pred_prob':best_propabilities[idx].item() if hasattr(best_propabilities[idx], 'item') else best_propabilities[idx],
+                                        })
+                                fig,axes = viz.visualize_image_attr_multiple(transposed_alg_img,
+                                                    permuted_image,
+                                                    methods=["original_image", "heat_map",'masked_image','alpha_scaling','blended_heat_map'],
+                                                    signs=['all', 'positive','positive','positive','positive'],
+                                                    #titles=['Original','Heatmap','Masked-image','Alpha-scaling','Blended heatmap'],
+                                                    fig_size=(16,12),
+                                                    use_pyplot=False,
+                                                    show_colorbar=True)
+                                
+
+                                self.logger.experiment.add_figure(f'{suffix}_{TOP_K}/Captum_{cam_name} *** Groundtruth: label: {best_labels[idx]}({gt_label_name}) Probability: {best_gt_prob[idx]*100:.2f} *** Predicted label: {best_predictions[idx]}({pred_label_name}) Probability: {best_propabilities[idx]*100:.2f} *** Idx: {best_idx[idx]}',fig)
+        self.logger.experiment.add_text('XAI results',json.dumps(xai_results,indent=4))
         self.test_step_prediction.clear()
         self.test_step_label.clear()
         self.test_step_input.clear()
@@ -889,8 +1096,35 @@ class EfficientNet_V2_L_Pretrained(EfficientNetPretrainedBase):
                          log_config=log_config,
                          num_workers=num_workers)
 class VisionTransformer_B_16(ImageClassifierBase): 
-    def __init__(self,lr,weight_decay,batch_size,mode='pre_train'):
-        pass
+    def __init__(self,lr=0.1,
+                 weight_decay=0.00002,
+                 batch_size=32,
+                 momentum=0.9,
+                 label_smoothing=0.1,
+                 lr_scheduler='cosineannealinglr',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0.01,
+                 epochs=150,
+                 norm_weight_decay=0.0,
+                 optimizer_algorithm='sgd',
+                 log_config=None,
+                 num_workers=0):
+        super().__init__(lr=lr,
+                        log_config=log_config,
+                         base_model=vit_b_16(weights=None,num_classes=NUM_CLASSES),
+                         batch_size=batch_size,
+                         epochs=epochs,
+                         weight_decay=weight_decay,
+                         momentum=momentum,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_scheduler=lr_scheduler,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         num_workers=num_workers)
 class VisionTransformer_L_16(ImageClassifierBase): 
     def __init__(self,lr=0.1,
                  weight_decay=0.00002,
@@ -1172,6 +1406,37 @@ class Resnet_18_Dropout(ImageClassifierBase):
             nn.Dropout(p=self.dropout,inplace=True),
            fc_layer
         )
+class Resnet_50(ImageClassifierBase):
+    def __init__(self,lr=0.01,
+                 weight_decay=0.00002,
+                 momentum=0.9,
+                 batch_size=32,
+                 label_smoothing=0.1,
+                 lr_scheduler='cosineannealinglr',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0.01,
+                 epochs=150,
+                 norm_weight_decay=0.0,
+                 optimizer_algorithm='sgd',
+                 log_config=None,
+                 num_workers=0):
+        super().__init__(
+                         base_model=resnet50(weights=None,num_classes=NUM_CLASSES),
+                         lr=lr,
+                         batch_size=batch_size,
+                         epochs=epochs,
+                         weight_decay=weight_decay,
+                         momentum=momentum,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_scheduler=lr_scheduler,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         log_config=log_config,
+                         num_workers=num_workers)
 class Resnet_101(ImageClassifierBase):
     def __init__(self,lr=0.01,
                  weight_decay=0.00002,
@@ -1203,6 +1468,51 @@ class Resnet_101(ImageClassifierBase):
                          optimizer_algorithm=optimizer_algorithm,
                          log_config=log_config,
                          num_workers=num_workers)
+class AlexNet(ImageClassifierBase):
+    def __init__(self,lr=0.01,
+                 weight_decay=0.00002,
+                 momentum=0.9,
+                 batch_size=32,
+                 label_smoothing=0.1,
+                 lr_scheduler='cosineannealinglr',
+                 lr_warmup_epochs=5,
+                 lr_warmup_method='linear',
+                 lr_warmup_decay=0.01,
+                 epochs=150,
+                 norm_weight_decay=0.0,
+                 optimizer_algorithm='sgd',
+                 log_config=None,
+                 num_workers=0):
+        super().__init__(
+                         base_model=alexnet(weights=None,num_classes=NUM_CLASSES),
+                         lr=lr,
+                         batch_size=batch_size,
+                         epochs=epochs,
+                         weight_decay=weight_decay,
+                         momentum=momentum,
+                         norm_weight_decay=norm_weight_decay,
+                         label_smoothing=label_smoothing,
+                         lr_scheduler=lr_scheduler,
+                         lr_warmup_epochs=lr_warmup_epochs,
+                         lr_warmup_method=lr_warmup_method,
+                         lr_warmup_decay=lr_warmup_decay,
+                         optimizer_algorithm=optimizer_algorithm,
+                         log_config=log_config,
+                         num_workers=num_workers)
+        self.init_weights(self.model) #initialize weights for stability
+    
+    def init_weights(self,m):
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out")
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.Linear):
+                init_range = 1.0 / math.sqrt(m.out_features)
+                nn.init.uniform_(m.weight, -init_range, init_range)
+                nn.init.zeros_(m.bias)
 class NaiveClassifier(ImageClassifierBase):
     def __init__(self,lr=0.01,
                  weight_decay=0.00002,

@@ -2,7 +2,7 @@ from skimage import io
 from matplotlib import pyplot as plt
 import numpy as np
 
-def show_image_from_array(image_array,title='') -> None:
+def show_image_from_array(image_array,title='',show=True) -> None:
     """Show an image in matplotlib
 
     Args:
@@ -10,12 +10,17 @@ def show_image_from_array(image_array,title='') -> None:
     """
 
 
-    plt.title(title,fontsize=20)
-    io.imshow(image_array)
-    plt.show()
+    #plt.figure(figsize=(16, 12))  # You can adjust the figsize as needed
+    fig = plt.figure()
+    plt.imshow(image_array)  # Display the image
+    plt.title(title, fontsize=18)  # Set the title with larger font size
+    plt.axis('off')  # Optional: Turn off axis ticks for better presentation
+    if show:
+        plt.show()
+    return fig
 
-def show_image_from_tensor(tensor,title='') -> None:
-    show_image_from_array(np.array(tensor.permute(1,2,0)),title)
+def show_image_from_tensor(tensor,title='',show=True) -> None:
+    return show_image_from_array(np.array(tensor.permute(1,2,0)),title,show=show)
 
 def show_image_from_path(path,title) -> None:
     image_array = io.imread(path)
