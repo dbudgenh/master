@@ -90,7 +90,7 @@ class BirdDataset(Dataset):
         image = default_loader(img_path) #read_image(img_path) #output has shape (3,224,224)
         if self.transform:
             image = self.transform(image)
-        return image, class_id,scientific_name#img_path
+        return image, class_id,image#scientific_name#img_path
     
 class BirdDatasetNPZ(Dataset):
     """Dataset containing images of birds. The dataset gets stored in memory, by loading the .npz (numpy compressed file) file

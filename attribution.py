@@ -73,10 +73,12 @@ def main():
     #                             batch_size=BATCH_SIZE,
     #                             num_workers=NUM_WORKERS,
     #                             collate_fn=collate_fn)
-    test_dataset =  BirdDataset(root_dir='D:/Users/david/Desktop/Python/master/data/',csv_file='D:/Users/david/Desktop/Python/master/data/birds.csv',transform=valid_transform,split=Split.TEST)
-    test_loader = DataLoader(dataset=test_dataset, batch_size=1, shuffle=True, num_workers=2) 
+    test_dataset =  BirdDataset(root_dir='D:/Users/david/Desktop/Python/master/data/',
+                                csv_file='D:/Users/david/Desktop/Python/master/data/birds.csv'
+                                ,transform=valid_transform,split=Split.TEST)
+    test_loader = DataLoader(dataset=test_dataset, batch_size=1, shuffle=False, num_workers=2) 
     
-    attribution_method = IntegratedGradients(model)
+    attribution_method = Saliency(model)
     target_layer = model.model.features[-2]
     grad_cam = GuidedGradCam(model=model,layer=target_layer)
 
@@ -97,10 +99,10 @@ def main():
         #attributions_gc = grad_cam.attribute(input,target=pred_label_idx)
 
         noise_tunnel = NoiseTunnel(attribution_method)
-        attributions_ig_nt = noise_tunnel.attribute(input, nt_samples=35, nt_type='smoothgrad_sq', target=pred_label_idx,internal_batch_size=1,n_steps=200)
+        #attributions_ig_nt = noise_tunnel.attribute(input, nt_samples=50, nt_type='smoothgrad_sq', target=pred_label_idx,internal_batch_size=1,n_steps=200)
         print("Performing noise tunnel")
         #attributions_gc_nt = noise_tunnel.attribute(input, nt_samples=10, nt_type='smoothgrad_sq', target=pred_label_idx)
-        #attributions_ig_nt = noise_tunnel.attribute(input, nt_samples=36, nt_type='smoothgrad_sq', target=pred_label_idx)
+        attributions_ig_nt = noise_tunnel.attribute(input, nt_samples=1, nt_type='smoothgrad_sq', target=pred_label_idx)
         #attributions_ig_nt = noise_tunnel.attribute(input, nt_samples=35, nt_type='smoothgrad_sq', target=pred_label_idx,sliding_window_shapes=(3,15,15),strides=(3,6,6))
 
         default_cmap = LinearSegmentedColormap.from_list('custom blue', 
@@ -141,8 +143,8 @@ def main():
         plt_fig, plt_axis = viz.visualize_image_attr_multiple(attribution_map_with_noise_tunnel,
                              denorm_rgb_image,
                              #methods=["original_image", "heat_map",'masked_image','alpha_scaling','blended_heat_map'],
-                                methods=["original_image", "heat_map",'masked_image'],
-                                signs=['all', 'positive','positive'],
+                                methods=['original_image'],
+                                signs=['all'],
                              #signs=['all', 'positive','positive','positive','positive'],
                              #titles=[f'Class: {pred_label_idx} ({test_label})\n Probability: {prediction_score.squeeze().item()*100:.2f}%', 'Heatmap', 'Masked-image', 'Alpha-scaling', 'Blended heatmap'],
                              #cmap=cmap,
