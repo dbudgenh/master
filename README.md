@@ -5,6 +5,13 @@ Improved Predictived Insights. By David B.
 ## Overview
 In this repository you can find all the files and code snippets needed to recreate the experiments for the master thesis.
 
+# How to use
+- Install all the dependencies using ``` pip install -r requirements.txt``` 
+- Download the dataset into the folder `./data/`
+- Open `train.py`
+- Change the models and hyperparameters to your liking
+- Run the code in your favorite IDE, or from the terminal using `python train.py`
+
 ## File Structure
 - `attention_rollout.py` Used to visualize the attention maps for vision transformer architectures
 - `attribution.py` Used to visualize heatmaps for different attribution methods after model training
